@@ -1,0 +1,314 @@
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+
+
+export async function joinQueue(
+  memberIds: string[],
+  courtPreferenceId?: string | null
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다.' };
+
+  // 현재 사용자의 member 정보
+  const { data: currentMember } = await supabase
+    .from('members')
+    .select('id')
+    .eq('auth_id', user.id)
+    .single();
+
+  if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
+
+  // 본인이 플레이 중인지 확인
+  const { data: activePlaying } = await supabase
+    .from('match_players')
+    .select('id, matches!inner(status)')
+    .eq('member_id', currentMember.id)
+    .in('matches.status', ['pending', 'playing'])
+    .limit(1);
+
+  const isMeBusy = activePlaying && activePlaying.length > 0;
+
+  // 본인이 플레이 중이 아닌 경우에만 대기열 중복 체크
+  if (!isMeBusy) {
+    const { data: existing } = await supabase
+      .from('queue_members')
+      .select('queue_entry_id, queue_entries!inner(status)')
+      .eq('member_id', currentMember.id)
+      .in('queue_entries.status', ['waiting', 'assigned', 'playing']);
+
+    if (existing && existing.length > 0) {
+      return { error: '이미 대기열에 참여 중입니다.' };
+    }
+  }
+
+  // 대기열 엔트리 생성
+  const { data: entry, error: entryError } = await supabase
+    .from('queue_entries')
+    .insert({
+      court_preference_id: courtPreferenceId || null,
+      status: 'waiting',
+    })
+    .select()
+    .single();
+
+  if (entryError) return { error: entryError.message };
+
+  if (isMeBusy && memberIds.length === 0) {
+    // 빈 대기열 방지 - 롤백
+    await supabase.from('queue_entries').delete().eq('id', entry.id);
+    return { error: '대기열에 추가할 멤버를 선택해주세요.' };
+  }
+
+  // 본인이 busy면 선택된 멤버만, 아니면 본인 포함
+  const allMemberIds = isMeBusy
+    ? memberIds
+    : [currentMember.id, ...memberIds.filter(id => id !== currentMember.id)];
+
+  const creatorId = isMeBusy ? allMemberIds[0] : currentMember.id;
+  const queueMembers = allMemberIds.map((memberId) => ({
+    queue_entry_id: entry.id,
+    member_id: memberId,
+    is_creator: memberId === creatorId,
+  }));
+
+  const { error: memberError } = await supabase
+    .from('queue_members')
+    .insert(queueMembers);
+
+  if (memberError) return { error: memberError.message };
+
+  // 4명이면 자동 배정 시도
+  if (allMemberIds.length >= 4) {
+    await tryAssignCourt(entry.id);
+  }
+
+
+  return { data: entry };
+}
+
+export async function joinExistingQueue(queueEntryId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다.' };
+
+  const { data: currentMember } = await supabase
+    .from('members')
+    .select('id')
+    .eq('auth_id', user.id)
+    .single();
+
+  if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
+
+  // 이미 대기 중인지 확인
+  const { data: existing } = await supabase
+    .from('queue_members')
+    .select('queue_entry_id, queue_entries!inner(status)')
+    .eq('member_id', currentMember.id)
+    .in('queue_entries.status', ['waiting', 'assigned', 'playing']);
+
+  if (existing && existing.length > 0) {
+    return { error: '이미 대기열에 참여 중입니다.' };
+  }
+
+  // 현재 대기열의 멤버 수 확인
+  const { data: members } = await supabase
+    .from('queue_members')
+    .select('id')
+    .eq('queue_entry_id', queueEntryId);
+
+  if (members && members.length >= 4) {
+    return { error: '이미 4명이 모두 찼습니다.' };
+  }
+
+  const { error } = await supabase
+    .from('queue_members')
+    .insert({
+      queue_entry_id: queueEntryId,
+      member_id: currentMember.id,
+      is_creator: false,
+    });
+
+  if (error) return { error: error.message };
+
+  // 4명이 되면 자동 배정
+  if (members && members.length + 1 >= 4) {
+    await tryAssignCourt(queueEntryId);
+  }
+
+
+  return { data: true };
+}
+
+export async function cancelQueue(queueEntryId: string) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('queue_entries')
+    .update({ status: 'cancelled' })
+    .eq('id', queueEntryId);
+
+  if (error) return { error: error.message };
+
+
+  return { data: true };
+}
+
+export async function leaveQueue(queueEntryId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: '로그인이 필요합니다.' };
+
+  const { data: currentMember } = await supabase
+    .from('members')
+    .select('id')
+    .eq('auth_id', user.id)
+    .single();
+
+  if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
+
+  const { error } = await supabase
+    .from('queue_members')
+    .delete()
+    .eq('queue_entry_id', queueEntryId)
+    .eq('member_id', currentMember.id);
+
+  if (error) return { error: error.message };
+
+
+  return { data: true };
+}
+
+export async function addMembersToQueue(queueEntryId: string, memberIds: string[]) {
+  const supabase = await createClient();
+
+  // 현재 멤버 수 확인
+  const { data: current } = await supabase
+    .from('queue_members')
+    .select('member_id')
+    .eq('queue_entry_id', queueEntryId);
+
+  const currentCount = current?.length ?? 0;
+  if (currentCount + memberIds.length > 4) {
+    return { error: `최대 4명까지 가능합니다. (현재 ${currentCount}명)` };
+  }
+
+  // 이미 다른 대기열에 있는 멤버 체크
+  const existingIds = current?.map((m) => m.member_id) ?? [];
+  const newIds = memberIds.filter((id) => !existingIds.includes(id));
+
+  if (newIds.length === 0) {
+    return { error: '추가할 멤버가 없습니다.' };
+  }
+
+  const rows = newIds.map((memberId) => ({
+    queue_entry_id: queueEntryId,
+    member_id: memberId,
+    is_creator: false,
+  }));
+
+  const { error } = await supabase.from('queue_members').insert(rows);
+  if (error) return { error: error.message };
+
+  // 4명이 되면 자동 배정
+  if (currentCount + newIds.length >= 4) {
+    await tryAssignCourt(queueEntryId);
+  }
+
+  return { data: true };
+}
+
+async function tryAssignCourt(queueEntryId: string) {
+  const supabase = await createClient();
+
+  // 대기열 정보 로드
+  const { data: entry } = await supabase
+    .from('queue_entries')
+    .select('*, members:queue_members(member_id)')
+    .eq('id', queueEntryId)
+    .single();
+
+  if (!entry || entry.status !== 'waiting') return;
+
+  // 선호 코트가 있으면 해당 코트 확인
+  let courtId: string | null = null;
+
+  if (entry.court_preference_id) {
+    const { data: court } = await supabase
+      .from('courts')
+      .select('id')
+      .eq('id', entry.court_preference_id)
+      .eq('status', 'operating')
+      .single();
+
+    // 해당 코트에 진행 중인 시합이 없는지 확인
+    if (court) {
+      const { data: activeMatch } = await supabase
+        .from('matches')
+        .select('id')
+        .eq('court_id', court.id)
+        .in('status', ['pending', 'playing'])
+        .limit(1);
+
+      if (!activeMatch || activeMatch.length === 0) {
+        courtId = court.id;
+      }
+    }
+  }
+
+  // 선호 코트가 없거나 사용 중이면 빈 코트 찾기
+  if (!courtId) {
+    const { data: courts } = await supabase
+      .from('courts')
+      .select('id')
+      .eq('status', 'operating')
+      .order('display_order');
+
+    if (courts) {
+      for (const court of courts) {
+        const { data: activeMatch } = await supabase
+          .from('matches')
+          .select('id')
+          .eq('court_id', court.id)
+          .in('status', ['pending', 'playing'])
+          .limit(1);
+
+        if (!activeMatch || activeMatch.length === 0) {
+          courtId = court.id;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!courtId) return; // 빈 코트 없음
+
+  // 코트 배정 -> 시합 생성
+  await supabase
+    .from('queue_entries')
+    .update({ status: 'assigned' })
+    .eq('id', queueEntryId);
+
+  const { data: match } = await supabase
+    .from('matches')
+    .insert({
+      court_id: courtId,
+      queue_entry_id: queueEntryId,
+      status: 'pending',
+    })
+    .select()
+    .single();
+
+  if (!match) return;
+
+  // 팀 배분 (A팀 2명, B팀 2명)
+  const members = entry.members as { member_id: string }[];
+  const players = members.map((m, i) => ({
+    match_id: match.id,
+    member_id: m.member_id,
+    team: i < 2 ? 'A' : 'B',
+  }));
+
+  await supabase.from('match_players').insert(players);
+}
