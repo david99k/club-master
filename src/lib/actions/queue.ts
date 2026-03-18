@@ -11,7 +11,6 @@ export async function joinQueue(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: '로그인이 필요합니다.' };
 
-  // 현재 사용자의 member 정보
   const { data: currentMember } = await supabase
     .from('members')
     .select('id')
@@ -20,28 +19,38 @@ export async function joinQueue(
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
 
-  // 본인이 플레이 중인지 확인
-  const { data: activePlaying } = await supabase
-    .from('match_players')
-    .select('id, matches!inner(status)')
-    .eq('member_id', currentMember.id)
-    .in('matches.status', ['pending', 'playing'])
-    .limit(1);
-
-  const isMeBusy = activePlaying && activePlaying.length > 0;
-
-  // 본인이 플레이 중이 아닌 경우에만 대기열 중복 체크
-  if (!isMeBusy) {
-    const { data: existing } = await supabase
+  // 병렬: 플레이 중 확인 + 대기열 중복 확인
+  const [busyResult, existingResult] = await Promise.all([
+    supabase
+      .from('match_players')
+      .select('id, matches!inner(status)')
+      .eq('member_id', currentMember.id)
+      .in('matches.status', ['pending', 'playing'])
+      .limit(1),
+    supabase
       .from('queue_members')
       .select('queue_entry_id, queue_entries!inner(status)')
       .eq('member_id', currentMember.id)
-      .in('queue_entries.status', ['waiting', 'assigned', 'playing']);
+      .in('queue_entries.status', ['waiting', 'assigned', 'playing'])
+      .limit(1),
+  ]);
 
-    if (existing && existing.length > 0) {
-      return { error: '이미 대기열에 참여 중입니다.' };
-    }
+  const isMeBusy = (busyResult.data?.length ?? 0) > 0;
+
+  if (!isMeBusy && (existingResult.data?.length ?? 0) > 0) {
+    return { error: '이미 대기열에 참여 중입니다.' };
   }
+
+  if (isMeBusy && memberIds.length === 0) {
+    return { error: '대기열에 추가할 멤버를 선택해주세요.' };
+  }
+
+  // 본인이 busy면 선택된 멤버만, 아니면 본인 포함
+  const allMemberIds = isMeBusy
+    ? memberIds
+    : [currentMember.id, ...memberIds.filter(id => id !== currentMember.id)];
+
+  const creatorId = isMeBusy ? allMemberIds[0] : currentMember.id;
 
   // 대기열 엔트리 생성
   const { data: entry, error: entryError } = await supabase
@@ -55,18 +64,6 @@ export async function joinQueue(
 
   if (entryError) return { error: entryError.message };
 
-  if (isMeBusy && memberIds.length === 0) {
-    // 빈 대기열 방지 - 롤백
-    await supabase.from('queue_entries').delete().eq('id', entry.id);
-    return { error: '대기열에 추가할 멤버를 선택해주세요.' };
-  }
-
-  // 본인이 busy면 선택된 멤버만, 아니면 본인 포함
-  const allMemberIds = isMeBusy
-    ? memberIds
-    : [currentMember.id, ...memberIds.filter(id => id !== currentMember.id)];
-
-  const creatorId = isMeBusy ? allMemberIds[0] : currentMember.id;
   const queueMembers = allMemberIds.map((memberId) => ({
     queue_entry_id: entry.id,
     member_id: memberId,
@@ -84,7 +81,6 @@ export async function joinQueue(
     await tryAssignCourt(entry.id);
   }
 
-
   return { data: entry };
 }
 
@@ -101,24 +97,26 @@ export async function joinExistingQueue(queueEntryId: string) {
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
 
-  // 이미 대기 중인지 확인
-  const { data: existing } = await supabase
-    .from('queue_members')
-    .select('queue_entry_id, queue_entries!inner(status)')
-    .eq('member_id', currentMember.id)
-    .in('queue_entries.status', ['waiting', 'assigned', 'playing']);
+  // 병렬: 대기열 중복 + 현재 멤버 수 확인
+  const [existingResult, membersResult] = await Promise.all([
+    supabase
+      .from('queue_members')
+      .select('queue_entry_id, queue_entries!inner(status)')
+      .eq('member_id', currentMember.id)
+      .in('queue_entries.status', ['waiting', 'assigned', 'playing'])
+      .limit(1),
+    supabase
+      .from('queue_members')
+      .select('id')
+      .eq('queue_entry_id', queueEntryId),
+  ]);
 
-  if (existing && existing.length > 0) {
+  if ((existingResult.data?.length ?? 0) > 0) {
     return { error: '이미 대기열에 참여 중입니다.' };
   }
 
-  // 현재 대기열의 멤버 수 확인
-  const { data: members } = await supabase
-    .from('queue_members')
-    .select('id')
-    .eq('queue_entry_id', queueEntryId);
-
-  if (members && members.length >= 4) {
+  const memberCount = membersResult.data?.length ?? 0;
+  if (memberCount >= 4) {
     return { error: '이미 4명이 모두 찼습니다.' };
   }
 
@@ -133,10 +131,9 @@ export async function joinExistingQueue(queueEntryId: string) {
   if (error) return { error: error.message };
 
   // 4명이 되면 자동 배정
-  if (members && members.length + 1 >= 4) {
+  if (memberCount + 1 >= 4) {
     await tryAssignCourt(queueEntryId);
   }
-
 
   return { data: true };
 }
@@ -222,84 +219,65 @@ export async function addMembersToQueue(queueEntryId: string, memberIds: string[
 async function tryAssignCourt(queueEntryId: string) {
   const supabase = await createClient();
 
-  // 대기열 정보 로드
-  const { data: entry } = await supabase
-    .from('queue_entries')
-    .select('*, members:queue_members(member_id)')
-    .eq('id', queueEntryId)
-    .single();
+  // 병렬: 대기열 정보 + 운영중 코트 + 활성 시합 목록
+  const [entryResult, courtsResult, activeMatchesResult] = await Promise.all([
+    supabase
+      .from('queue_entries')
+      .select('*, members:queue_members(member_id)')
+      .eq('id', queueEntryId)
+      .single(),
+    supabase
+      .from('courts')
+      .select('id')
+      .eq('status', 'operating')
+      .order('display_order'),
+    supabase
+      .from('matches')
+      .select('court_id')
+      .in('status', ['pending', 'playing']),
+  ]);
 
+  const entry = entryResult.data;
   if (!entry || entry.status !== 'waiting') return;
 
-  // 선호 코트가 있으면 해당 코트 확인
+  const courts = courtsResult.data ?? [];
+  const busyCourtIds = new Set(
+    (activeMatchesResult.data ?? []).map((m) => m.court_id)
+  );
+
+  // 선호 코트 우선, 없으면 빈 코트 찾기
   let courtId: string | null = null;
 
-  if (entry.court_preference_id) {
-    const { data: court } = await supabase
-      .from('courts')
-      .select('id')
-      .eq('id', entry.court_preference_id)
-      .eq('status', 'operating')
-      .single();
-
-    // 해당 코트에 진행 중인 시합이 없는지 확인
-    if (court) {
-      const { data: activeMatch } = await supabase
-        .from('matches')
-        .select('id')
-        .eq('court_id', court.id)
-        .in('status', ['pending', 'playing'])
-        .limit(1);
-
-      if (!activeMatch || activeMatch.length === 0) {
-        courtId = court.id;
-      }
-    }
+  if (entry.court_preference_id && !busyCourtIds.has(entry.court_preference_id)) {
+    const isOperating = courts.some((c) => c.id === entry.court_preference_id);
+    if (isOperating) courtId = entry.court_preference_id;
   }
 
-  // 선호 코트가 없거나 사용 중이면 빈 코트 찾기
   if (!courtId) {
-    const { data: courts } = await supabase
-      .from('courts')
-      .select('id')
-      .eq('status', 'operating')
-      .order('display_order');
-
-    if (courts) {
-      for (const court of courts) {
-        const { data: activeMatch } = await supabase
-          .from('matches')
-          .select('id')
-          .eq('court_id', court.id)
-          .in('status', ['pending', 'playing'])
-          .limit(1);
-
-        if (!activeMatch || activeMatch.length === 0) {
-          courtId = court.id;
-          break;
-        }
-      }
-    }
+    const available = courts.find((c) => !busyCourtIds.has(c.id));
+    if (available) courtId = available.id;
   }
 
   if (!courtId) return; // 빈 코트 없음
 
-  // 코트 배정 -> 시합 생성
-  await supabase
-    .from('queue_entries')
-    .update({ status: 'assigned' })
-    .eq('id', queueEntryId);
+  // 코트 배정 + 시합 생성
+  const [, matchResult] = await Promise.all([
+    supabase
+      .from('queue_entries')
+      .update({ status: 'assigned' })
+      .eq('id', queueEntryId),
+    supabase
+      .from('matches')
+      .insert({
+        court_id: courtId,
+        queue_entry_id: queueEntryId,
+        status: 'pending',
+      })
+      .select()
+      .single(),
+  ]);
 
-  const { data: match } = await supabase
-    .from('matches')
-    .insert({
-      court_id: courtId,
-      queue_entry_id: queueEntryId,
-      status: 'pending',
-    })
-    .select()
-    .single();
-
+  const match = matchResult.data;
   if (!match) return;
 
   // 팀 배분 (A팀 2명, B팀 2명)

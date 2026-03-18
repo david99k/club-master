@@ -48,44 +48,44 @@ export async function updateCourtStatus(courtId: string, status: CourtStatus) {
 async function autoAssignToAvailableCourt(courtId: string) {
   const supabase = await createClient();
 
-  // 해당 코트에 이미 진행 중인 시합이 있는지 확인
-  const { data: activeMatch } = await supabase
-    .from('matches')
-    .select('id')
-    .eq('court_id', courtId)
-    .in('status', ['pending', 'playing'])
-    .limit(1);
+  // 병렬: 활성 시합 확인 + 대기열 조회
+  const [activeResult, entriesResult] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('id')
+      .eq('court_id', courtId)
+      .in('status', ['pending', 'playing'])
+      .limit(1),
+    supabase
+      .from('queue_entries')
+      .select('*, members:queue_members(member_id)')
+      .eq('status', 'waiting')
+      .order('created_at'),
+  ]);
 
-  if (activeMatch && activeMatch.length > 0) return;
+  if ((activeResult.data?.length ?? 0) > 0) return;
 
-  // 4인 완성된 대기팀 중 가장 먼저 등록된 팀 찾기
-  const { data: waitingEntries } = await supabase
-    .from('queue_entries')
-    .select('*, members:queue_members(member_id)')
-    .eq('status', 'waiting')
-    .order('created_at');
-
-  if (!waitingEntries) return;
-
-  const fullEntry = waitingEntries.find((e) => (e.members?.length ?? 0) >= 4);
+  const fullEntry = entriesResult.data?.find((e) => (e.members?.length ?? 0) >= 4);
   if (!fullEntry) return;
 
-  // 배정
-  await supabase
-    .from('queue_entries')
-    .update({ status: 'assigned' })
-    .eq('id', fullEntry.id);
+  // 병렬: 배정 + 시합 생성
+  const [, matchResult] = await Promise.all([
+    supabase
+      .from('queue_entries')
+      .update({ status: 'assigned' })
+      .eq('id', fullEntry.id),
+    supabase
+      .from('matches')
+      .insert({
+        court_id: courtId,
+        queue_entry_id: fullEntry.id,
+        status: 'pending',
+      })
+      .select()
+      .single(),
+  ]);
 
-  const { data: match } = await supabase
-    .from('matches')
-    .insert({
-      court_id: courtId,
-      queue_entry_id: fullEntry.id,
-      status: 'pending',
-    })
-    .select()
-    .single();
-
+  const match = matchResult.data;
   if (match && fullEntry.members) {
     const players = fullEntry.members.map((m: { member_id: string }, i: number) => ({
       match_id: match.id,

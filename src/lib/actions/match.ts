@@ -6,30 +6,30 @@ import { createClient } from '@/lib/supabase/server';
 export async function startMatch(matchId: string) {
   const supabase = await createClient();
 
-  const { error } = await supabase
-    .from('matches')
-    .update({
-      status: 'playing',
-      started_at: new Date().toISOString(),
-    })
-    .eq('id', matchId);
+  // 병렬: 시합 시작 + queue_entry_id 조회
+  const [updateResult, matchResult] = await Promise.all([
+    supabase
+      .from('matches')
+      .update({
+        status: 'playing',
+        started_at: new Date().toISOString(),
+      })
+      .eq('id', matchId),
+    supabase
+      .from('matches')
+      .select('queue_entry_id')
+      .eq('id', matchId)
+      .single(),
+  ]);
 
-  if (error) return { error: error.message };
+  if (updateResult.error) return { error: updateResult.error.message };
 
-  // 대기열 상태도 업데이트
-  const { data: match } = await supabase
-    .from('matches')
-    .select('queue_entry_id')
-    .eq('id', matchId)
-    .single();
-
-  if (match?.queue_entry_id) {
+  if (matchResult.data?.queue_entry_id) {
     await supabase
       .from('queue_entries')
       .update({ status: 'playing' })
-      .eq('id', match.queue_entry_id);
+      .eq('id', matchResult.data.queue_entry_id);
   }
-
 
   return { data: true };
 }
@@ -41,32 +41,45 @@ export async function completeMatch(
 ) {
   const supabase = await createClient();
 
-  const { error } = await supabase
-    .from('matches')
-    .update({
-      status: 'completed',
-      ended_at: new Date().toISOString(),
-    })
-    .eq('id', matchId);
+  // 병렬: 시합 완료 + queue_entry_id 조회
+  const [updateResult, matchResult] = await Promise.all([
+    supabase
+      .from('matches')
+      .update({
+        status: 'completed',
+        ended_at: new Date().toISOString(),
+      })
+      .eq('id', matchId),
+    supabase
+      .from('matches')
+      .select('queue_entry_id')
+      .eq('id', matchId)
+      .single(),
+  ]);
 
-  if (error) return { error: error.message };
+  if (updateResult.error) return { error: updateResult.error.message };
 
-  // 대기열 상태 업데이트
-  const { data: match } = await supabase
-    .from('matches')
-    .select('queue_entry_id')
-    .eq('id', matchId)
-    .single();
-
-  if (match?.queue_entry_id) {
-    await supabase
-      .from('queue_entries')
-      .update({ status: 'completed' })
-      .eq('id', match.queue_entry_id);
-  }
-
-  // 스코어 입력 (선택)
-  if (teamAScore !== undefined && teamBScore !== undefined) {
+  // 병렬: 대기열 완료 + 스코어 입력
+  if (matchResult.data?.queue_entry_id) {
+    if (teamAScore !== undefined && teamBScore !== undefined) {
+      await Promise.all([
+        supabase
+          .from('queue_entries')
+          .update({ status: 'completed' })
+          .eq('id', matchResult.data.queue_entry_id),
+        supabase.from('scores').insert({
+          match_id: matchId,
+          team_a_score: teamAScore,
+          team_b_score: teamBScore,
+        }),
+      ]);
+    } else {
+      await supabase
+        .from('queue_entries')
+        .update({ status: 'completed' })
+        .eq('id', matchResult.data.queue_entry_id);
+    }
+  } else if (teamAScore !== undefined && teamBScore !== undefined) {
     await supabase.from('scores').insert({
       match_id: matchId,
       team_a_score: teamAScore,
@@ -77,101 +90,78 @@ export async function completeMatch(
   // 대기 중인 팀을 빈 코트에 자동 배정
   await autoAssignWaitingTeams();
 
-
   return { data: true };
 }
 
 async function autoAssignWaitingTeams() {
   const supabase = await createClient();
 
-  // 4인 완성 대기팀 우선 -> 생성 순서대로
-  const { data: waitingEntries } = await supabase
-    .from('queue_entries')
-    .select(`
-      *,
-      members:queue_members(member_id)
-    `)
-    .eq('status', 'waiting')
-    .order('created_at');
+  // 병렬: 대기열 + 운영 코트 + 활성 시합
+  const [entriesResult, courtsResult, activeResult] = await Promise.all([
+    supabase
+      .from('queue_entries')
+      .select('*, members:queue_members(member_id)')
+      .eq('status', 'waiting')
+      .order('created_at'),
+    supabase
+      .from('courts')
+      .select('id')
+      .eq('status', 'operating')
+      .order('display_order'),
+    supabase
+      .from('matches')
+      .select('court_id')
+      .in('status', ['pending', 'playing']),
+  ]);
 
+  const waitingEntries = entriesResult.data;
   if (!waitingEntries) return;
 
-  // 4인 완성팀 우선 정렬
-  const sorted = [...waitingEntries].sort((a, b) => {
-    const aFull = (a.members?.length ?? 0) >= 4 ? 0 : 1;
-    const bFull = (b.members?.length ?? 0) >= 4 ? 0 : 1;
-    return aFull - bFull;
-  });
+  const courts = courtsResult.data ?? [];
+  const busyCourtIds = new Set(
+    (activeResult.data ?? []).map((m) => m.court_id)
+  );
 
-  for (const entry of sorted) {
-    if ((entry.members?.length ?? 0) < 4) continue;
+  // 4인 완성팀만, 생성 순서대로
+  const fullEntries = waitingEntries.filter((e) => (e.members?.length ?? 0) >= 4);
 
-    // 빈 코트 찾기 (선호 코트 우선)
+  for (const entry of fullEntries) {
     let courtId: string | null = null;
 
-    if (entry.court_preference_id) {
-      const { data: activeMatch } = await supabase
-        .from('matches')
-        .select('id')
-        .eq('court_id', entry.court_preference_id)
-        .in('status', ['pending', 'playing'])
-        .limit(1);
-
-      if (!activeMatch || activeMatch.length === 0) {
-        // 코트가 운영 중인지 확인
-        const { data: court } = await supabase
-          .from('courts')
-          .select('id')
-          .eq('id', entry.court_preference_id)
-          .eq('status', 'operating')
-          .single();
-
-        if (court) courtId = court.id;
+    // 선호 코트 우선
+    if (entry.court_preference_id && !busyCourtIds.has(entry.court_preference_id)) {
+      if (courts.some((c) => c.id === entry.court_preference_id)) {
+        courtId = entry.court_preference_id;
       }
     }
 
     if (!courtId) {
-      const { data: courts } = await supabase
-        .from('courts')
-        .select('id')
-        .eq('status', 'operating')
-        .order('display_order');
-
-      if (courts) {
-        for (const court of courts) {
-          const { data: activeMatch } = await supabase
-            .from('matches')
-            .select('id')
-            .eq('court_id', court.id)
-            .in('status', ['pending', 'playing'])
-            .limit(1);
-
-          if (!activeMatch || activeMatch.length === 0) {
-            courtId = court.id;
-            break;
-          }
-        }
-      }
+      const available = courts.find((c) => !busyCourtIds.has(c.id));
+      if (available) courtId = available.id;
     }
 
     if (!courtId) break; // 빈 코트 없음
 
-    // 배정
-    await supabase
-      .from('queue_entries')
-      .update({ status: 'assigned' })
-      .eq('id', entry.id);
+    // 배정된 코트를 busyCourtIds에 추가 (다음 루프에서 중복 방지)
+    busyCourtIds.add(courtId);
 
-    const { data: match } = await supabase
-      .from('matches')
-      .insert({
-        court_id: courtId,
-        queue_entry_id: entry.id,
-        status: 'pending',
-      })
-      .select()
-      .single();
+    const [, matchResult] = await Promise.all([
+      supabase
+        .from('queue_entries')
+        .update({ status: 'assigned' })
+        .eq('id', entry.id),
+      supabase
+        .from('matches')
+        .insert({
+          court_id: courtId,
+          queue_entry_id: entry.id,
+          status: 'pending',
+        })
+        .select()
+        .single(),
+    ]);
 
+    const match = matchResult.data;
     if (match && entry.members) {
       const players = entry.members.map((m: { member_id: string }, i: number) => ({
         match_id: match.id,
