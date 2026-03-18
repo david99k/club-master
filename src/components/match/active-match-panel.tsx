@@ -28,43 +28,43 @@ export function ActiveMatchPanel() {
 
   return (
     <>
-      <div className={`rounded-2xl overflow-hidden border-2 ${
+      <div className={`rounded-xl sm:rounded-2xl overflow-hidden border-2 ${
         isPlaying ? 'border-indigo-500 shadow-lg shadow-indigo-500/15' : 'border-indigo-400'
       }`}>
         {/* 헤더 */}
-        <div className="bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
-            <span className="text-lg">🎾</span>
-            <span className="font-bold">내 시합</span>
-            <span className="text-sm text-white/70">- {myMatch.court?.name ?? '코트'}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+        <div className="bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 px-3 py-2 sm:px-5 sm:py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-white">
+              <span className="text-base sm:text-lg">🎾</span>
+              <span className="font-bold text-sm sm:text-base">내 시합</span>
+              <span className="text-xs sm:text-sm text-white/70">- {myMatch.court?.name ?? '코트'}</span>
+            </div>
+            <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
               isPlaying ? 'bg-green-400/20 text-green-100' : 'bg-white/20 text-white'
             }`}>
-              {isPlaying ? '경기중' : '플레이 대기'}
+              {isPlaying ? '경기중' : '대기'}
             </span>
+          </div>
+          <div className="flex justify-end mt-1">
             <MatchTimer match={myMatch} />
           </div>
         </div>
 
         {/* 플레이어 */}
-        <div className="bg-white p-5">
-          <div className="grid grid-cols-2 gap-6 mb-4">
+        <div className="bg-white p-3 sm:p-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-3 sm:mb-4">
             {/* A팀 */}
             <div>
-              <div className="text-xs font-bold text-indigo-600 mb-2">A팀</div>
-              <div className="space-y-2">
+              <div className="text-[10px] sm:text-xs font-bold text-indigo-600 mb-1.5 sm:mb-2">A팀</div>
+              <div className="space-y-1.5 sm:space-y-2">
                 {myMatch.players?.filter((p) => p.team === 'A').map((p) => (
-                  <div key={p.id} className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold">
+                  <div key={p.id} className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-xs sm:text-base">
                       {p.member?.name?.charAt(0) ?? '?'}
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">
-                        {p.member?.name}
-                        {p.member_id === member?.id && <span className="text-indigo-500 ml-1">(나)</span>}
-                      </div>
+                    <div className="text-xs sm:text-sm font-medium truncate">
+                      {p.member?.name}
+                      {p.member_id === member?.id && <span className="text-indigo-500 ml-0.5 sm:ml-1">(나)</span>}
                     </div>
                   </div>
                 ))}
@@ -72,18 +72,16 @@ export function ActiveMatchPanel() {
             </div>
             {/* B팀 */}
             <div>
-              <div className="text-xs font-bold text-gray-600 mb-2">B팀</div>
-              <div className="space-y-2">
+              <div className="text-[10px] sm:text-xs font-bold text-gray-600 mb-1.5 sm:mb-2">B팀</div>
+              <div className="space-y-1.5 sm:space-y-2">
                 {myMatch.players?.filter((p) => p.team === 'B').map((p) => (
-                  <div key={p.id} className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold">
+                  <div key={p.id} className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-xs sm:text-base">
                       {p.member?.name?.charAt(0) ?? '?'}
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">
-                        {p.member?.name}
-                        {p.member_id === member?.id && <span className="text-indigo-500 ml-1">(나)</span>}
-                      </div>
+                    <div className="text-xs sm:text-sm font-medium truncate">
+                      {p.member?.name}
+                      {p.member_id === member?.id && <span className="text-indigo-500 ml-0.5 sm:ml-1">(나)</span>}
                     </div>
                   </div>
                 ))}
@@ -93,7 +91,7 @@ export function ActiveMatchPanel() {
 
           {/* 액션 버튼 */}
           {myMatch.status === 'pending' && (
-            <Button onClick={handleStartPlay} className="w-full rounded-xl h-11 text-base gap-2">
+            <Button onClick={handleStartPlay} className="w-full rounded-xl h-10 sm:h-11 text-sm sm:text-base gap-2">
               ▶ 플레이 시작
             </Button>
           )}
@@ -101,7 +99,7 @@ export function ActiveMatchPanel() {
             <Button
               variant="outline"
               onClick={() => setCompletingMatchId(myMatch.id)}
-              className="w-full rounded-xl h-11 text-base border-amber-400 text-amber-600 hover:bg-amber-50 gap-2"
+              className="w-full rounded-xl h-10 sm:h-11 text-sm sm:text-base border-amber-400 text-amber-600 hover:bg-amber-50 gap-2"
             >
               🏁 경기 종료
             </Button>

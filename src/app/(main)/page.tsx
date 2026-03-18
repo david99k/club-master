@@ -40,18 +40,18 @@ export default function HomePage() {
   if (!member) return null;
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-5 sm:space-y-8 max-w-5xl mx-auto">
       {/* 내 시합 패널 */}
       <ActiveMatchPanel />
 
       {/* 현재 코트 상황 */}
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <span className="text-2xl">🏟</span>
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h2 className="text-base sm:text-xl font-bold flex items-center gap-1.5 sm:gap-2">
+            <span className="text-lg sm:text-2xl">🏟</span>
             현재 코트 상황
           </h2>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs sm:text-sm text-muted-foreground">
             총 {courts.length}개 코트
           </span>
         </div>
@@ -60,25 +60,25 @@ export default function HomePage() {
 
       {/* 대기 명단 */}
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <span className="text-2xl">📋</span>
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h2 className="text-base sm:text-xl font-bold flex items-center gap-1.5 sm:gap-2">
+            <span className="text-lg sm:text-2xl">📋</span>
             대기 명단
           </h2>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 sm:gap-2">
             {isAdmin && (
-              <Button variant="outline" onClick={() => setRoundRobinOpen(true)} className="gap-1.5 rounded-full">
+              <Button variant="outline" size="sm" onClick={() => setRoundRobinOpen(true)} className="gap-1 sm:gap-1.5 rounded-full text-xs sm:text-sm">
                 랜덤 플레이
               </Button>
             )}
-            <Button onClick={() => {
+            <Button size="sm" onClick={() => {
               if (isInQueue) {
                 setQueueAlertOpen(true);
                 return;
               }
               setJoinDialogOpen(true);
-            }} className="gap-1.5 rounded-full">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            }} className="gap-1 sm:gap-1.5 rounded-full text-xs sm:text-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                 <path d="M5 12h14" />
                 <path d="M12 5v14" />
               </svg>

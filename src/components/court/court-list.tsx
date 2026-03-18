@@ -9,7 +9,7 @@ export function CourtList() {
   const { matches } = useMatchStore();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
       {courts.map((court) => {
         const activeMatch = matches.find(
           (m) =>
@@ -21,7 +21,7 @@ export function CourtList() {
         );
       })}
       {courts.length === 0 && (
-        <div className="col-span-full rounded-2xl border-2 border-dashed border-gray-300 bg-white p-12 text-center">
+        <div className="col-span-full rounded-2xl border-2 border-dashed border-gray-300 bg-white p-6 sm:p-12 text-center">
           <div className="text-gray-400 mb-2">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12 mx-auto">
               <rect width="18" height="18" x="3" y="3" rx="2" />

@@ -154,106 +154,103 @@ export function QueueList() {
           return (
             <div
               key={entry.id}
-              className={`rounded-2xl bg-white border p-4 transition-all ${
+              className={`rounded-2xl bg-white border p-3 sm:p-4 transition-all ${
                 isAssigned ? 'border-indigo-400 shadow-md shadow-indigo-500/10' :
                 isOwnEntry ? 'border-indigo-300' : 'border-gray-200'
               }`}
             >
-              <div className="flex items-center gap-4">
-                {/* 순위 */}
-                <div className="flex flex-col items-center shrink-0">
-                  <span className="text-2xl font-bold text-indigo-600">{index + 1}</span>
-                  <span className="text-xs text-gray-400">순위</span>
+              {/* 상단: 순위 + 정보 */}
+              <div className="flex items-center justify-between mb-2 sm:mb-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg sm:text-2xl font-bold text-indigo-600">{index + 1}</span>
+                  <span className="text-[10px] sm:text-xs text-gray-400">순위</span>
+                  <div className="text-xs sm:text-sm font-semibold text-amber-600 ml-1">
+                    👥 {memberCount}/4
+                  </div>
+                  {entry.preferred_court && (
+                    <div className="text-[10px] sm:text-xs text-indigo-500 font-medium">
+                      🏟 {entry.preferred_court.name}
+                    </div>
+                  )}
                 </div>
+                <span className="text-[10px] sm:text-xs text-gray-400">{createdTime}</span>
+              </div>
 
-                {/* 멤버 슬롯 */}
-                <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto">
-                  {slots.map((qm, i) => {
-                    if (qm) {
-                      const isMe = qm.member_id === member?.id;
-                      const isCreator = qm.is_creator;
-                      return (
-                        <div
-                          key={qm.member_id}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm shrink-0 ${
-                            isMe ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                            isMe ? 'bg-indigo-500' : 'bg-gray-400'
-                          }`}>
-                            {qm.member?.name?.charAt(0) ?? '?'}
-                          </div>
-                          {qm.member?.name ?? '??'}
-                          {isMe && ' (나)'}
-                          {isCreator && ' 👑'}
-                        </div>
-                      );
-                    }
+              {/* 멤버 슬롯 */}
+              <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2">
+                {slots.map((qm, i) => {
+                  if (qm) {
+                    const isMe = qm.member_id === member?.id;
+                    const isCreator = qm.is_creator;
                     return (
                       <div
-                        key={`empty-${i}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-gray-50 text-gray-300 border border-dashed border-gray-200 shrink-0"
+                        key={qm.member_id}
+                        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm ${
+                          isMe ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'bg-gray-100 text-gray-700'
+                        }`}
                       >
-                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                          </svg>
+                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold text-white ${
+                          isMe ? 'bg-indigo-500' : 'bg-gray-400'
+                        }`}>
+                          {qm.member?.name?.charAt(0) ?? '?'}
                         </div>
-                        비어있음
+                        {qm.member?.name ?? '??'}
+                        {isMe && ' (나)'}
+                        {isCreator && ' 👑'}
                       </div>
                     );
-                  })}
-                </div>
-
-                {/* 우측 정보 + 액션 */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-amber-600">
-                      👥 {memberCount} / 4 모집 중
-                    </div>
-                    {entry.preferred_court && (
-                      <div className="text-xs text-indigo-500 font-medium">
-                        🏟 {entry.preferred_court.name}
+                  }
+                  return (
+                    <div
+                      key={`empty-${i}`}
+                      className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm bg-gray-50 text-gray-300 border border-dashed border-gray-200"
+                    >
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5 sm:w-3 sm:h-3">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                        </svg>
                       </div>
-                    )}
-                    <div className="text-xs text-gray-400">{createdTime}</div>
-                  </div>
-
-                  {canManage ? (
-                    <div className="flex gap-1.5">
-                      {canAddMembers && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full gap-1"
-                          onClick={() => openAddDialog(entry.id)}
-                        >
-                          + 인원추가
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full border-red-300 text-red-500 hover:bg-red-50 hover:text-red-600 gap-1"
-                        onClick={() => handleCancel(entry.id)}
-                        disabled={loadingId === entry.id}
-                      >
-                        대기 취소
-                      </Button>
+                      <span className="hidden sm:inline">비어있음</span>
                     </div>
-                  ) : canJoin ? (
+                  );
+                })}
+              </div>
+
+              {/* 액션 버튼 */}
+              <div className="flex justify-end gap-1.5">
+                {canManage ? (
+                  <>
+                    {canAddMembers && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full gap-1 text-xs sm:text-sm"
+                        onClick={() => openAddDialog(entry.id)}
+                      >
+                        + 인원추가
+                      </Button>
+                    )}
                     <Button
+                      variant="outline"
                       size="sm"
-                      className="rounded-full gap-1"
-                      onClick={() => handleJoin(entry.id)}
+                      className="rounded-full border-red-300 text-red-500 hover:bg-red-50 hover:text-red-600 gap-1 text-xs sm:text-sm"
+                      onClick={() => handleCancel(entry.id)}
                       disabled={loadingId === entry.id}
                     >
-                      + 참가하기
+                      대기 취소
                     </Button>
-                  ) : null}
-                </div>
+                  </>
+                ) : canJoin ? (
+                  <Button
+                    size="sm"
+                    className="rounded-full gap-1 text-xs sm:text-sm"
+                    onClick={() => handleJoin(entry.id)}
+                    disabled={loadingId === entry.id}
+                  >
+                    + 참가하기
+                  </Button>
+                ) : null}
               </div>
             </div>
           );

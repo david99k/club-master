@@ -18,7 +18,7 @@ export default function MainLayout({
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container px-4 py-6">{children}</main>
+      <main className="container px-3 py-4 sm:px-4 sm:py-6">{children}</main>
       <Toaster />
     </div>
   );
