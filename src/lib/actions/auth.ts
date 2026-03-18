@@ -68,33 +68,46 @@ export async function signIn(name: string, phone: string) {
   const supabase = await createClient();
   const email = phoneToEmail(digits);
 
-  // 병렬: 이름+연락처 매칭 확인 + auth 로그인 동시 실행
-  const [memberResult, authResult] = await Promise.all([
-    supabase
-      .from('members')
-      .select('id')
-      .eq('name', name.trim())
-      .eq('phone', digits)
-      .single(),
-    supabase.auth.signInWithPassword({
-      email,
-      password: digits,
-    }),
-  ]);
+  // 이름+연락처 매칭 확인
+  const { data: member } = await supabase
+    .from('members')
+    .select('id, auth_id')
+    .eq('name', name.trim())
+    .eq('phone', digits)
+    .single();
 
-  if (!memberResult.data) {
-    // auth 로그인이 성공했더라도 이름 불일치면 로그아웃
-    if (authResult.data?.session) {
-      await supabase.auth.signOut();
-    }
+  if (!member) {
     return { error: '이름과 연락처가 일치하는 회원이 없습니다.' };
   }
 
-  if (authResult.error) {
-    return { error: '로그인에 실패했습니다. 회원가입을 먼저 해주세요.' };
+  // Auth 계정이 없는 회원 (관리자가 직접 추가한 경우) → 자동 생성
+  if (!member.auth_id) {
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password: digits,
+      options: { data: { name: name.trim() } },
+    });
+
+    if (signUpError) return { error: signUpError.message };
+
+    if (signUpData.user) {
+      await supabase
+        .from('members')
+        .update({ auth_id: signUpData.user.id })
+        .eq('id', member.id);
+    }
+
+    return { data: signUpData };
   }
 
-  return { data: authResult.data };
+  // Auth 계정이 있는 회원 → 바로 로그인
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: digits,
+  });
+
+  if (error) return { error: '로그인에 실패했습니다.' };
+  return { data };
 }
 
 export async function signOut() {
