@@ -56,13 +56,29 @@ export async function signUp(name: string, phone: string) {
   return { data };
 }
 
-export async function signIn(phone: string) {
+export async function signIn(name: string, phone: string) {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 11) {
     return { error: '올바른 연락처를 입력해주세요.' };
   }
+  if (!name.trim()) {
+    return { error: '이름을 입력해주세요.' };
+  }
 
   const supabase = await createClient();
+
+  // 이름 + 연락처 매칭 확인
+  const { data: member } = await supabase
+    .from('members')
+    .select('id')
+    .eq('name', name.trim())
+    .eq('phone', digits)
+    .single();
+
+  if (!member) {
+    return { error: '이름과 연락처가 일치하는 회원이 없습니다.' };
+  }
+
   const email = phoneToEmail(digits);
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -70,7 +86,7 @@ export async function signIn(phone: string) {
     password: digits,
   });
 
-  if (error) return { error: '등록되지 않은 연락처이거나 정보가 일치하지 않습니다.' };
+  if (error) return { error: '로그인에 실패했습니다. 회원가입을 먼저 해주세요.' };
   return { data };
 }
 

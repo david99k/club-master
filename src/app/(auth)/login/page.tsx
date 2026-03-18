@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await signIn(phone);
+      const result = await signIn(name, phone);
       if (result.error) {
         setError(result.error);
         return;
@@ -47,6 +48,18 @@ export default function LoginPage() {
         <div className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-xl p-6">
           <h2 className="text-xl font-bold text-center mb-6">로그인</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">이름</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="홍길동"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="rounded-xl h-11"
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="phone">연락처</Label>
               <Input
