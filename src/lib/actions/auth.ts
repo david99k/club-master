@@ -66,28 +66,35 @@ export async function signIn(name: string, phone: string) {
   }
 
   const supabase = await createClient();
+  const email = phoneToEmail(digits);
 
-  // 이름 + 연락처 매칭 확인
-  const { data: member } = await supabase
-    .from('members')
-    .select('id')
-    .eq('name', name.trim())
-    .eq('phone', digits)
-    .single();
+  // 병렬: 이름+연락처 매칭 확인 + auth 로그인 동시 실행
+  const [memberResult, authResult] = await Promise.all([
+    supabase
+      .from('members')
+      .select('id')
+      .eq('name', name.trim())
+      .eq('phone', digits)
+      .single(),
+    supabase.auth.signInWithPassword({
+      email,
+      password: digits,
+    }),
+  ]);
 
-  if (!member) {
+  if (!memberResult.data) {
+    // auth 로그인이 성공했더라도 이름 불일치면 로그아웃
+    if (authResult.data?.session) {
+      await supabase.auth.signOut();
+    }
     return { error: '이름과 연락처가 일치하는 회원이 없습니다.' };
   }
 
-  const email = phoneToEmail(digits);
+  if (authResult.error) {
+    return { error: '로그인에 실패했습니다. 회원가입을 먼저 해주세요.' };
+  }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password: digits,
-  });
-
-  if (error) return { error: '로그인에 실패했습니다. 회원가입을 먼저 해주세요.' };
-  return { data };
+  return { data: authResult.data };
 }
 
 export async function signOut() {

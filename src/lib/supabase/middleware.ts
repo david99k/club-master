@@ -25,23 +25,22 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // 로그인하지 않은 사용자를 로그인 페이지로 리다이렉트
   const isAuthPage = request.nextUrl.pathname.startsWith('/login') ||
     request.nextUrl.pathname.startsWith('/signup');
   const isDisplayPage = request.nextUrl.pathname.startsWith('/display');
   const isApiRoute = request.nextUrl.pathname.startsWith('/api');
 
-  if (!user && !isAuthPage && !isDisplayPage && !isApiRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+  // 정적/공개 페이지는 인증 체크 스킵
+  if (isAuthPage || isDisplayPage || isApiRoute) {
+    return supabaseResponse;
   }
 
-  if (user && isAuthPage) {
+  // 쿠키 기반으로 빠르게 세션 확인 (getUser 대신 getSession 사용 - 네트워크 요청 없음)
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 

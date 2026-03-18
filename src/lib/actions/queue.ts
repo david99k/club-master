@@ -8,13 +8,13 @@ export async function joinQueue(
   courtPreferenceId?: string | null
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: '로그인이 필요합니다.' };
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: '로그인이 필요합니다.' };
 
   const { data: currentMember } = await supabase
     .from('members')
     .select('id')
-    .eq('auth_id', user.id)
+    .eq('auth_id', session.user.id)
     .single();
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
@@ -86,13 +86,13 @@ export async function joinQueue(
 
 export async function joinExistingQueue(queueEntryId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: '로그인이 필요합니다.' };
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: '로그인이 필요합니다.' };
 
   const { data: currentMember } = await supabase
     .from('members')
     .select('id')
-    .eq('auth_id', user.id)
+    .eq('auth_id', session.user.id)
     .single();
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
@@ -154,13 +154,13 @@ export async function cancelQueue(queueEntryId: string) {
 
 export async function leaveQueue(queueEntryId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: '로그인이 필요합니다.' };
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: '로그인이 필요합니다.' };
 
   const { data: currentMember } = await supabase
     .from('members')
     .select('id')
-    .eq('auth_id', user.id)
+    .eq('auth_id', session.user.id)
     .single();
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };

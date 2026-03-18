@@ -20,24 +20,25 @@ export function useAuth() {
     const supabase = createClient();
 
     const loadMember = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         setMember(null);
         setLoading(false);
         return;
       }
 
-      // 로그인 시 온라인 표시
-      await supabase
-        .from('members')
-        .update({ is_online: true })
-        .eq('auth_id', user.id);
-
-      const { data } = await supabase
-        .from('members')
-        .select('*')
-        .eq('auth_id', user.id)
-        .single();
+      // 병렬: 온라인 표시 + 멤버 조회
+      const [, { data }] = await Promise.all([
+        supabase
+          .from('members')
+          .update({ is_online: true })
+          .eq('auth_id', session.user.id),
+        supabase
+          .from('members')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single(),
+      ]);
 
       setMember(data as Member | null);
       setLoading(false);
