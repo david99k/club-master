@@ -38,18 +38,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="relative pt-16 pb-24 px-4 text-center text-white overflow-hidden">
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/login-bg.jpg)' }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/70 via-violet-900/60 to-purple-900/80" />
-        <div className="relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight">Sportium</h1>
-          <p className="text-white/80 text-sm mt-2">Smart Club Management</p>
-        </div>
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-4">
+      <div className="fixed inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/login-bg.jpg)' }} />
+      <div className="fixed inset-0 bg-gradient-to-b from-indigo-900/70 via-violet-900/60 to-purple-900/80" />
+
+      <div className="relative z-10 text-center text-white mb-8">
+        <h1 className="text-3xl font-extrabold tracking-tight">Sportium</h1>
+        <p className="text-white/80 text-sm mt-2">Smart Club Management</p>
       </div>
 
-      <div className="flex-1 -mt-12 px-4">
-        <div className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-xl p-6">
+      <div className="relative z-10 w-full max-w-sm">
+        <div className="bg-white/95 backdrop-blur rounded-2xl shadow-xl p-6">
           <h2 className="text-xl font-bold text-center mb-6">로그인</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
