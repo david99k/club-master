@@ -39,9 +39,13 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 pt-16 pb-24 px-4 text-center text-white">
-        <h1 className="text-3xl font-extrabold tracking-tight">Sportium</h1>
-        <p className="text-white/70 text-sm mt-2">새 계정을 만들어 시작하세요</p>
+      <div className="relative pt-16 pb-24 px-4 text-center text-white overflow-hidden">
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: 'url(/login-bg.jpg)' }} />
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/70 via-violet-900/60 to-purple-900/80" />
+        <div className="relative z-10">
+          <h1 className="text-3xl font-extrabold tracking-tight">Sportium</h1>
+          <p className="text-white/80 text-sm mt-2">새 계정을 만들어 시작하세요</p>
+        </div>
       </div>
 
       <div className="flex-1 -mt-12 px-4">
