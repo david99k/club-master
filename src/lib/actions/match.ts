@@ -2,41 +2,55 @@
 
 import { createClient } from '@/lib/supabase/server';
 
-export async function swapTeams(matchId: string, playerIdA: string, playerIdB: string) {
+// 3가지 팀 조합을 순환: (0,1 vs 2,3) → (0,2 vs 1,3) → (0,3 vs 1,2) → ...
+export async function cycleTeams(matchId: string) {
   const supabase = await createClient();
 
-  // 시합이 pending인지 확인
-  const { data: match } = await supabase
-    .from('matches')
-    .select('status')
-    .eq('id', matchId)
-    .single();
+  const [{ data: match }, { data: players }] = await Promise.all([
+    supabase.from('matches').select('status').eq('id', matchId).single(),
+    supabase.from('match_players').select('id, member_id, team').eq('match_id', matchId),
+  ]);
 
   if (!match || match.status !== 'pending') {
     return { error: '대기 중인 경기만 팀 변경이 가능합니다.' };
   }
 
-  // 두 플레이어 정보 조회
-  const { data: players } = await supabase
-    .from('match_players')
-    .select('id, team')
-    .eq('match_id', matchId)
-    .in('id', [playerIdA, playerIdB]);
-
-  if (!players || players.length !== 2) {
-    return { error: '플레이어를 찾을 수 없습니다.' };
+  if (!players || players.length !== 4) {
+    return { error: '4명의 플레이어가 필요합니다.' };
   }
 
-  // 팀 교차 업데이트
+  // member_id 기준 정렬하여 안정적인 인덱싱
+  const sorted = [...players].sort((a, b) => a.member_id.localeCompare(b.member_id));
+
+  // 현재 조합 판별: sorted[0]은 항상 A팀이라고 가정하고, A팀 파트너가 누구인지로 판별
+  const teamAIds = new Set(players.filter((p) => p.team === 'A').map((p) => p.member_id));
+
+  // sorted[0]의 파트너(같은 팀) 찾기
+  const partnerIndex = sorted.findIndex(
+    (p, i) => i > 0 && teamAIds.has(p.member_id) === teamAIds.has(sorted[0].member_id)
+  );
+
+  // 조합: partner가 sorted[1]이면 0, sorted[2]이면 1, sorted[3]이면 2
+  const comboMap: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
+  const currentCombo = comboMap[partnerIndex] ?? 0;
+  const nextCombo = (currentCombo + 1) % 3;
+
+  // 다음 조합의 팀 배분
+  const combos = [
+    { A: [0, 1], B: [2, 3] },
+    { A: [0, 2], B: [1, 3] },
+    { A: [0, 3], B: [1, 2] },
+  ];
+  const next = combos[nextCombo];
+
+  // 병렬 업데이트
   await Promise.all([
-    supabase
-      .from('match_players')
-      .update({ team: players[1].team })
-      .eq('id', players[0].id),
-    supabase
-      .from('match_players')
-      .update({ team: players[0].team })
-      .eq('id', players[1].id),
+    ...next.A.map((i) =>
+      supabase.from('match_players').update({ team: 'A' }).eq('id', sorted[i].id)
+    ),
+    ...next.B.map((i) =>
+      supabase.from('match_players').update({ team: 'B' }).eq('id', sorted[i].id)
+    ),
   ]);
 
   return { data: true };

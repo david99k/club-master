@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { MatchTimer } from './match-timer';
 import { CompleteMatchDialog } from './complete-match-dialog';
-import { startMatch, swapTeams } from '@/lib/actions/match';
+import { startMatch, cycleTeams } from '@/lib/actions/match';
 
 export function ActiveMatchPanel() {
   const { matches } = useMatchStore();
@@ -31,12 +31,11 @@ export function ActiveMatchPanel() {
     await startMatch(myMatch.id);
   };
 
-  // 팀 변경: A팀 2번째와 B팀 1번째를 교체
-  const handleSwapTeams = async () => {
-    if (teamA.length < 2 || teamB.length < 1) return;
+  // 팀 변경: 3가지 조합 순환 (1,2 vs 3,4) → (1,3 vs 2,4) → (1,4 vs 2,3)
+  const handleCycleTeams = async () => {
     setSwapping(true);
     try {
-      await swapTeams(myMatch.id, teamA[1].id, teamB[0].id);
+      await cycleTeams(myMatch.id);
     } finally {
       setSwapping(false);
     }
@@ -110,7 +109,7 @@ export function ActiveMatchPanel() {
             {isPending && (
               <Button
                 variant="outline"
-                onClick={handleSwapTeams}
+                onClick={handleCycleTeams}
                 disabled={swapping}
                 className="w-full rounded-xl h-10 sm:h-11 text-sm sm:text-base border-indigo-300 text-indigo-600 hover:bg-indigo-50 gap-2"
               >
