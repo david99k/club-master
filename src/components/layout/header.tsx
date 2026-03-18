@@ -13,20 +13,8 @@ export function Header() {
   return (
     <header className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-white shadow-lg">
       <div className="container flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 sm:w-5 sm:h-5">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-              <path d="M2 12h20" />
-            </svg>
-          </div>
-          <div>
-            <div className="font-bold text-sm sm:text-lg leading-tight tracking-tight">
-              {process.env.NEXT_PUBLIC_CLUB_NAME ?? 'Court Master'}
-            </div>
-            <div className="text-[10px] sm:text-xs text-white/70 leading-tight hidden sm:block">실시간 코트 매칭 시스템</div>
-          </div>
+        <Link href="/" className="flex items-center">
+          <span className="font-extrabold text-lg sm:text-xl tracking-tight">Sportium</span>
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
           <Link href="/history">
