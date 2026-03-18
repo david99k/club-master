@@ -5,23 +5,28 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { signUp } from '@/lib/actions/auth';
+import { formatPhone, stripPhone } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = stripPhone(e.target.value);
+    setPhone(formatPhone(raw));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const result = await signUp(name, email, password);
+      const result = await signUp(name, phone);
       if (result.error) {
         setError(result.error);
         return;
@@ -34,23 +39,14 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* 상단 그라디언트 */}
       <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 pt-16 pb-24 px-4 text-center text-white">
-        <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-4">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-            <path d="M2 12h20" />
-          </svg>
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight">회원가입</h1>
-        <p className="text-white/70 text-sm mt-1">새 계정을 만들어 시작하세요</p>
+        <h1 className="text-3xl font-extrabold tracking-tight">Sportium</h1>
+        <p className="text-white/70 text-sm mt-2">새 계정을 만들어 시작하세요</p>
       </div>
 
-      {/* 가입 카드 */}
       <div className="flex-1 -mt-12 px-4">
         <div className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-xl p-6">
-          <h2 className="text-xl font-bold text-center mb-6">계정 만들기</h2>
+          <h2 className="text-xl font-bold text-center mb-6">회원가입</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">이름</Label>
@@ -65,27 +61,14 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">이메일</Label>
+              <Label htmlFor="phone">연락처</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="example@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="phone"
+                type="tel"
+                placeholder="010-1234-5678"
+                value={phone}
+                onChange={handlePhoneChange}
                 className="rounded-xl h-11"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">비밀번호</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="6자리 이상"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="rounded-xl h-11"
-                minLength={6}
                 required
               />
             </div>
