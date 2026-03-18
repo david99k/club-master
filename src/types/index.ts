@@ -85,3 +85,10 @@ export interface MemberStats {
   readonly losses: number;
   readonly period: string;
 }
+
+export interface ClubSettings {
+  readonly id: string;
+  readonly match_wait_seconds: number;
+  readonly created_at: string;
+  readonly updated_at: string;
+}

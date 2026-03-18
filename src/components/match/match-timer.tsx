@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import type { Match } from '@/types';
+import { useSettingsStore } from '@/store/settings';
 import { startMatch } from '@/lib/actions/match';
 
 interface MatchTimerProps {
@@ -10,6 +11,7 @@ interface MatchTimerProps {
 
 export function MatchTimer({ match }: MatchTimerProps) {
   const [elapsed, setElapsed] = useState('00:00');
+  const { matchWaitSeconds } = useSettingsStore();
 
   const calculateElapsed = useCallback(() => {
     const start = match.status === 'playing' && match.started_at
@@ -30,13 +32,13 @@ export function MatchTimer({ match }: MatchTimerProps) {
     return () => clearInterval(interval);
   }, [calculateElapsed]);
 
-  // 2분 초과 시 자동 플레이 시작
+  // 설정된 대기 시간 초과 시 자동 플레이 시작
   useEffect(() => {
     if (match.status !== 'pending') return;
 
     const created = new Date(match.created_at).getTime();
-    const twoMinutes = 2 * 60 * 1000;
-    const remaining = twoMinutes - (Date.now() - created);
+    const waitMs = matchWaitSeconds * 1000;
+    const remaining = waitMs - (Date.now() - created);
 
     if (remaining <= 0) {
       startMatch(match.id);
@@ -48,7 +50,7 @@ export function MatchTimer({ match }: MatchTimerProps) {
     }, remaining);
 
     return () => clearTimeout(timeout);
-  }, [match.id, match.status, match.created_at]);
+  }, [match.id, match.status, match.created_at, matchWaitSeconds]);
 
   const isPending = match.status === 'pending';
 

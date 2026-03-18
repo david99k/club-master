@@ -2,6 +2,45 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+export async function swapTeams(matchId: string, playerIdA: string, playerIdB: string) {
+  const supabase = await createClient();
+
+  // 시합이 pending인지 확인
+  const { data: match } = await supabase
+    .from('matches')
+    .select('status')
+    .eq('id', matchId)
+    .single();
+
+  if (!match || match.status !== 'pending') {
+    return { error: '대기 중인 경기만 팀 변경이 가능합니다.' };
+  }
+
+  // 두 플레이어 정보 조회
+  const { data: players } = await supabase
+    .from('match_players')
+    .select('id, team')
+    .eq('match_id', matchId)
+    .in('id', [playerIdA, playerIdB]);
+
+  if (!players || players.length !== 2) {
+    return { error: '플레이어를 찾을 수 없습니다.' };
+  }
+
+  // 팀 교차 업데이트
+  await Promise.all([
+    supabase
+      .from('match_players')
+      .update({ team: players[1].team })
+      .eq('id', players[0].id),
+    supabase
+      .from('match_players')
+      .update({ team: players[0].team })
+      .eq('id', players[1].id),
+  ]);
+
+  return { data: true };
+}
 
 export async function startMatch(matchId: string) {
   const supabase = await createClient();

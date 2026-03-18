@@ -16,6 +16,11 @@ const MENU_ITEMS = [
     label: '회원 관리',
     icon: '👥',
   },
+  {
+    href: '/admin/settings',
+    label: '운영 설정',
+    icon: '⚙️',
+  },
 ];
 
 export default function AdminLayout({

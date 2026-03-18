@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useCourtStore } from '@/store/court';
 import { useQueueStore } from '@/store/queue';
 import { useMatchStore } from '@/store/match';
+import { useSettingsStore } from '@/store/settings';
 import type { Court, QueueEntry, QueueMember, Member, Match, MatchPlayer, Score } from '@/types';
 
 export function useRealtimeCourts() {
@@ -210,4 +211,38 @@ export function useRealtimeMatches() {
       supabase.removeChannel(channel);
     };
   }, [setMatches]);
+}
+
+export function useRealtimeSettings() {
+  const { setMatchWaitSeconds } = useSettingsStore();
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    supabase
+      .from('club_settings')
+      .select('match_wait_seconds')
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) setMatchWaitSeconds(data.match_wait_seconds);
+      });
+
+    const channel = supabase
+      .channel('settings-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'club_settings' },
+        (payload) => {
+          if (payload.new.match_wait_seconds != null) {
+            setMatchWaitSeconds(payload.new.match_wait_seconds);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [setMatchWaitSeconds]);
 }

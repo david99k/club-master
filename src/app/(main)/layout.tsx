@@ -2,7 +2,7 @@
 
 import { Header } from '@/components/layout/header';
 import { useAuth } from '@/lib/hooks/use-auth';
-import { useRealtimeCourts, useRealtimeQueue, useRealtimeMatches } from '@/lib/hooks/use-realtime';
+import { useRealtimeCourts, useRealtimeQueue, useRealtimeMatches, useRealtimeSettings } from '@/lib/hooks/use-realtime';
 import { Toaster } from '@/components/ui/sonner';
 
 export default function MainLayout({
@@ -14,6 +14,7 @@ export default function MainLayout({
   useRealtimeCourts();
   useRealtimeQueue();
   useRealtimeMatches();
+  useRealtimeSettings();
 
   return (
     <div className="min-h-screen bg-background">
