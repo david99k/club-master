@@ -57,6 +57,16 @@ export function Header() {
               </Button>
             </Link>
           )}
+          {member?.is_super_admin && (
+            <Link href="/super-admin">
+              <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/15 gap-1 px-2 sm:px-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <span className="hidden sm:inline">슈퍼관리</span>
+              </Button>
+            </Link>
+          )}
           {member && (
             <div className="flex items-center gap-1 sm:gap-2">
               <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-white/15 backdrop-blur">
