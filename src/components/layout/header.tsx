@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/store/auth';
+import { useClubStore } from '@/store/club';
 import { useIsAdmin } from '@/lib/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/actions/auth';
@@ -8,15 +9,32 @@ import Link from 'next/link';
 
 export function Header() {
   const { member } = useAuthStore();
+  const { activeClub } = useClubStore();
   const isAdmin = useIsAdmin();
 
   return (
     <header className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-white shadow-lg">
       <div className="container flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex items-center gap-2">
           <span className="font-extrabold text-lg sm:text-xl tracking-tight">Sportium</span>
+          {activeClub && (
+            <span className="text-xs sm:text-sm font-medium text-white/70 bg-white/15 px-2 py-0.5 rounded-full">
+              {activeClub.name}
+            </span>
+          )}
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
+          {!activeClub && (
+            <Link href="/clubs">
+              <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/15 gap-1 px-2 sm:px-3">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <span className="hidden sm:inline">클럽 찾기</span>
+              </Button>
+            </Link>
+          )}
           <Link href="/history">
             <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/15 gap-1 px-2 sm:px-3">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">

@@ -7,6 +7,11 @@ import { usePathname, useRouter } from 'next/navigation';
 
 const MENU_ITEMS = [
   {
+    href: '/admin/club',
+    label: '클럽 정보',
+    icon: '🏢',
+  },
+  {
     href: '/admin/courts',
     label: '코트 관리',
     icon: '🏟',
@@ -15,6 +20,11 @@ const MENU_ITEMS = [
     href: '/admin/members',
     label: '회원 관리',
     icon: '👥',
+  },
+  {
+    href: '/admin/requests',
+    label: '가입 요청',
+    icon: '📩',
   },
   {
     href: '/admin/settings',

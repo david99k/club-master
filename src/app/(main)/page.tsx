@@ -8,16 +8,19 @@ import { RoundRobinDialog } from '@/components/queue/round-robin-dialog';
 import { ActiveMatchPanel } from '@/components/match/active-match-panel';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth';
+import { useClubStore } from '@/store/club';
 import { useIsAdmin } from '@/lib/hooks/use-auth';
 import { useCourtStore } from '@/store/court';
 import { useQueueStore } from '@/store/queue';
 import { AlertDialog } from '@/components/ui/alert-dialog';
+import Link from 'next/link';
 
 export default function HomePage() {
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [roundRobinOpen, setRoundRobinOpen] = useState(false);
   const [queueAlertOpen, setQueueAlertOpen] = useState(false);
   const { member, isLoading } = useAuthStore();
+  const { activeClub } = useClubStore();
   const isAdmin = useIsAdmin();
   const { courts } = useCourtStore();
   const { entries } = useQueueStore();
@@ -38,6 +41,27 @@ export default function HomePage() {
   }
 
   if (!member) return null;
+
+  // 클럽 미소속 안내
+  if (!activeClub) {
+    return (
+      <div className="max-w-md mx-auto text-center py-12 space-y-4">
+        <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center text-3xl mx-auto">
+          🏢
+        </div>
+        <h2 className="text-xl font-bold">클럽에 소속되어 있지 않습니다</h2>
+        <p className="text-sm text-gray-500">클럽에 가입하면 코트 현황, 대기 명단, 경기 기록 등을 이용할 수 있습니다.</p>
+        <div className="flex flex-col gap-2">
+          <Link href="/clubs">
+            <Button className="w-full rounded-xl h-11">클럽 찾기</Button>
+          </Link>
+          <Link href="/onboarding">
+            <Button variant="outline" className="w-full rounded-xl h-11">새 클럽 만들기</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 sm:space-y-8 max-w-5xl mx-auto">

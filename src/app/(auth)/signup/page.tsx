@@ -31,7 +31,7 @@ export default function SignupPage() {
         setError(result.error);
         return;
       }
-      router.push('/');
+      router.push('/onboarding');
     } finally {
       setLoading(false);
     }
