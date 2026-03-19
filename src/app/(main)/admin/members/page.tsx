@@ -13,41 +13,60 @@ import {
 } from '@/components/ui/select';
 import { addMember, deleteMember } from '@/lib/actions/member';
 import { formatPhone, stripPhone } from '@/lib/utils';
-import type { Member, MemberRole } from '@/types';
+import { useClubStore } from '@/store/club';
+import type { Member, MemberRole, ClubMemberRole } from '@/types';
 
-const ROLE_OPTIONS: { value: MemberRole; label: string; color: string }[] = [
-  { value: 'admin', label: '관리자', color: 'bg-red-500' },
-  { value: 'sub_admin', label: '부관리자', color: 'bg-amber-500' },
-  { value: 'user', label: '일반회원', color: 'bg-gray-400' },
+const ROLE_OPTIONS: { value: ClubMemberRole; label: string; color: string }[] = [
+  { value: 'master', label: '마스터', color: 'bg-red-500' },
+  { value: 'admin', label: '운영진', color: 'bg-amber-500' },
+  { value: 'member', label: '일반회원', color: 'bg-gray-400' },
 ];
 
+interface MemberWithClubRole extends Member {
+  readonly clubRole: ClubMemberRole;
+  readonly clubMemberId: string;
+}
+
 export default function AdminMembersPage() {
-  const [members, setMembers] = useState<Member[]>([]);
+  const { activeClub } = useClubStore();
+  const [members, setMembers] = useState<MemberWithClubRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [adding, setAdding] = useState(false);
 
   const loadMembers = async () => {
+    if (!activeClub) return;
     const supabase = createClient();
     const { data } = await supabase
-      .from('members')
-      .select('*')
+      .from('club_members')
+      .select('id, role, member:members(*)')
+      .eq('club_id', activeClub.id)
+      .eq('status', 'approved')
       .order('created_at', { ascending: false });
 
-    if (data) setMembers(data as Member[]);
+    if (data) {
+      const mapped = (data as unknown as { id: string; role: string; member: Member | null }[])
+        .filter((cm) => cm.member !== null)
+        .map((cm) => ({
+          ...(cm.member as Member),
+          clubRole: cm.role as ClubMemberRole,
+          clubMemberId: cm.id,
+        }));
+      setMembers(mapped);
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     loadMembers();
-  }, []);
+  }, [activeClub]);
 
-  const handleRoleChange = async (memberId: string, role: MemberRole) => {
+  const handleRoleChange = async (clubMemberId: string, memberId: string, role: ClubMemberRole) => {
     const supabase = createClient();
-    await supabase.from('members').update({ role }).eq('id', memberId);
+    await supabase.from('club_members').update({ role }).eq('id', clubMemberId);
     setMembers((prev) =>
-      prev.map((m) => (m.id === memberId ? { ...m, role } : m))
+      prev.map((m) => (m.id === memberId ? { ...m, clubRole: role } : m))
     );
   };
 
@@ -140,8 +159,8 @@ export default function AdminMembersPage() {
 
                 <div className="flex items-center gap-2">
                   <Select
-                    value={member.role}
-                    onValueChange={(value) => handleRoleChange(member.id, value as MemberRole)}
+                    value={member.clubRole}
+                    onValueChange={(value) => handleRoleChange(member.clubMemberId, member.id, value as ClubMemberRole)}
                   >
                     <SelectTrigger className="w-[120px] rounded-xl">
                       <SelectValue>

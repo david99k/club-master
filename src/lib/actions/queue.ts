@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getMyClubId } from './club-context';
 
 
 export async function joinQueue(
@@ -11,6 +12,9 @@ export async function joinQueue(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: '로그인이 필요합니다.' };
 
+  const clubId = await getMyClubId();
+  if (!clubId) return { error: '클럽 정보를 찾을 수 없습니다.' };
+
   const { data: currentMember } = await supabase
     .from('members')
     .select('id')
@@ -19,7 +23,6 @@ export async function joinQueue(
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
 
-  // 병렬: 플레이 중 확인 + 대기열 중복 확인
   const [busyResult, existingResult] = await Promise.all([
     supabase
       .from('match_players')
@@ -45,19 +48,18 @@ export async function joinQueue(
     return { error: '대기열에 추가할 멤버를 선택해주세요.' };
   }
 
-  // 본인이 busy면 선택된 멤버만, 아니면 본인 포함
   const allMemberIds = isMeBusy
     ? memberIds
     : [currentMember.id, ...memberIds.filter(id => id !== currentMember.id)];
 
   const creatorId = isMeBusy ? allMemberIds[0] : currentMember.id;
 
-  // 대기열 엔트리 생성
   const { data: entry, error: entryError } = await supabase
     .from('queue_entries')
     .insert({
       court_preference_id: courtPreferenceId || null,
       status: 'waiting',
+      club_id: clubId,
     })
     .select()
     .single();
@@ -76,9 +78,8 @@ export async function joinQueue(
 
   if (memberError) return { error: memberError.message };
 
-  // 4명이면 자동 배정 시도
   if (allMemberIds.length >= 4) {
-    await tryAssignCourt(entry.id);
+    await tryAssignCourt(entry.id, clubId);
   }
 
   return { data: entry };
@@ -97,7 +98,6 @@ export async function joinExistingQueue(queueEntryId: string) {
 
   if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
 
-  // 병렬: 대기열 중복 + 현재 멤버 수 확인
   const [existingResult, membersResult] = await Promise.all([
     supabase
       .from('queue_members')
@@ -130,9 +130,16 @@ export async function joinExistingQueue(queueEntryId: string) {
 
   if (error) return { error: error.message };
 
-  // 4명이 되면 자동 배정
   if (memberCount + 1 >= 4) {
-    await tryAssignCourt(queueEntryId);
+    // queue_entry에서 club_id 조회
+    const { data: entry } = await supabase
+      .from('queue_entries')
+      .select('club_id')
+      .eq('id', queueEntryId)
+      .single();
+    if (entry) {
+      await tryAssignCourt(queueEntryId, entry.club_id);
+    }
   }
 
   return { data: true };
@@ -147,8 +154,6 @@ export async function cancelQueue(queueEntryId: string) {
     .eq('id', queueEntryId);
 
   if (error) return { error: error.message };
-
-
   return { data: true };
 }
 
@@ -172,15 +177,12 @@ export async function leaveQueue(queueEntryId: string) {
     .eq('member_id', currentMember.id);
 
   if (error) return { error: error.message };
-
-
   return { data: true };
 }
 
 export async function addMembersToQueue(queueEntryId: string, memberIds: string[]) {
   const supabase = await createClient();
 
-  // 현재 멤버 수 확인
   const { data: current } = await supabase
     .from('queue_members')
     .select('member_id')
@@ -191,7 +193,6 @@ export async function addMembersToQueue(queueEntryId: string, memberIds: string[
     return { error: `최대 4명까지 가능합니다. (현재 ${currentCount}명)` };
   }
 
-  // 이미 다른 대기열에 있는 멤버 체크
   const existingIds = current?.map((m) => m.member_id) ?? [];
   const newIds = memberIds.filter((id) => !existingIds.includes(id));
 
@@ -208,18 +209,23 @@ export async function addMembersToQueue(queueEntryId: string, memberIds: string[
   const { error } = await supabase.from('queue_members').insert(rows);
   if (error) return { error: error.message };
 
-  // 4명이 되면 자동 배정
   if (currentCount + newIds.length >= 4) {
-    await tryAssignCourt(queueEntryId);
+    const { data: entry } = await supabase
+      .from('queue_entries')
+      .select('club_id')
+      .eq('id', queueEntryId)
+      .single();
+    if (entry) {
+      await tryAssignCourt(queueEntryId, entry.club_id);
+    }
   }
 
   return { data: true };
 }
 
-async function tryAssignCourt(queueEntryId: string) {
+async function tryAssignCourt(queueEntryId: string, clubId: string) {
   const supabase = await createClient();
 
-  // 병렬: 대기열 정보 + 운영중 코트 + 활성 시합 목록
   const [entryResult, courtsResult, activeMatchesResult] = await Promise.all([
     supabase
       .from('queue_entries')
@@ -229,11 +235,13 @@ async function tryAssignCourt(queueEntryId: string) {
     supabase
       .from('courts')
       .select('id')
+      .eq('club_id', clubId)
       .eq('status', 'operating')
       .order('display_order'),
     supabase
       .from('matches')
       .select('court_id')
+      .eq('club_id', clubId)
       .in('status', ['pending', 'playing']),
   ]);
 
@@ -245,7 +253,6 @@ async function tryAssignCourt(queueEntryId: string) {
     (activeMatchesResult.data ?? []).map((m) => m.court_id)
   );
 
-  // 선호 코트 우선, 없으면 빈 코트 찾기
   let courtId: string | null = null;
 
   if (entry.court_preference_id && !busyCourtIds.has(entry.court_preference_id)) {
@@ -258,9 +265,8 @@ async function tryAssignCourt(queueEntryId: string) {
     if (available) courtId = available.id;
   }
 
-  if (!courtId) return; // 빈 코트 없음
+  if (!courtId) return;
 
-  // 코트 배정 + 시합 생성
   const [, matchResult] = await Promise.all([
     supabase
       .from('queue_entries')
@@ -272,6 +278,7 @@ async function tryAssignCourt(queueEntryId: string) {
         court_id: courtId,
         queue_entry_id: queueEntryId,
         status: 'pending',
+        club_id: clubId,
       })
       .select()
       .single(),
@@ -280,7 +287,6 @@ async function tryAssignCourt(queueEntryId: string) {
   const match = matchResult.data;
   if (!match) return;
 
-  // 팀 배분 (A팀 2명, B팀 2명)
   const members = entry.members as { member_id: string }[];
   const players = members.map((m, i) => ({
     match_id: match.id,

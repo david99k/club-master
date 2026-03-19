@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +9,17 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { Court, QueueEntry, Match } from '@/types';
 
 export default function DisplayPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p>로딩 중...</p></div>}>
+      <DisplayContent />
+    </Suspense>
+  );
+}
+
+function DisplayContent() {
+  const searchParams = useSearchParams();
+  const clubId = searchParams.get('clubId');
+  const [clubName, setClubName] = useState<string>('');
   const [courts, setCourts] = useState<Court[]>([]);
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -23,17 +35,23 @@ export default function DisplayPage() {
   }, []);
 
   useEffect(() => {
+    if (!clubId) return;
     const supabase = createClient();
+
+    // 클럽명 로드
+    supabase.from('clubs').select('name').eq('id', clubId).single().then(({ data }) => {
+      if (data) setClubName(data.name);
+    });
 
     const loadAll = async () => {
       const [courtsRes, queueRes, matchesRes] = await Promise.all([
-        supabase.from('courts').select('*').order('display_order'),
+        supabase.from('courts').select('*').eq('club_id', clubId).order('display_order'),
         supabase.from('queue_entries').select(`
           *, members:queue_members(*, member:members(*))
-        `).in('status', ['waiting', 'assigned']).order('created_at'),
+        `).eq('club_id', clubId).in('status', ['waiting', 'assigned']).order('created_at'),
         supabase.from('matches').select(`
           *, court:courts(*), players:match_players(*, member:members(*))
-        `).in('status', ['pending', 'playing']).order('created_at'),
+        `).eq('club_id', clubId).in('status', ['pending', 'playing']).order('created_at'),
       ]);
 
       if (courtsRes.data) setCourts(courtsRes.data as Court[]);
@@ -44,18 +62,18 @@ export default function DisplayPage() {
     loadAll();
 
     const channel = supabase
-      .channel('display-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, () => loadAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_entries' }, () => loadAll())
+      .channel(`display-realtime-${clubId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courts', filter: `club_id=eq.${clubId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_entries', filter: `club_id=eq.${clubId}` }, () => loadAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members' }, () => loadAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `club_id=eq.${clubId}` }, () => loadAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_players' }, () => loadAll())
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [clubId]);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -75,7 +93,7 @@ export default function DisplayPage() {
         {/* 헤더 */}
         <div className="text-center">
           <h1 className="text-2xl font-bold">
-            {process.env.NEXT_PUBLIC_CLUB_NAME ?? '클럽 코트'}
+            {clubName || '클럽 코트'}
           </h1>
         </div>
 

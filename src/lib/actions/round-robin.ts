@@ -1,16 +1,18 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getMyClubId } from './club-context';
 
 
 export async function createRoundRobin(selectedMemberIds: string[]) {
   const supabase = await createClient();
+  const clubId = await getMyClubId();
+  if (!clubId) return { error: '클럽 정보를 찾을 수 없습니다.' };
 
   if (selectedMemberIds.length < 4) {
     return { error: '최소 4명이 필요합니다.' };
   }
 
-  // 4명씩 그룹으로 나누기 (셔플 후)
   const shuffled = [...selectedMemberIds].sort(() => Math.random() - 0.5);
   const groups: string[][] = [];
 
@@ -21,25 +23,15 @@ export async function createRoundRobin(selectedMemberIds: string[]) {
     }
   }
 
-  // 남은 인원이 2~3명이면 마지막 그룹에 합치기 (4명 미만 그룹 방지)
-  if (groups.length > 1) {
-    const lastGroup = groups[groups.length - 1];
-    if (lastGroup.length < 4) {
-      // 마지막 그룹이 4명 미만이면 이전 그룹과 합쳐서 재분배하지 않고 그대로 대기열에 넣기
-      // (2~3명도 대기 가능)
-    }
-  }
-
-  // 운영 중인 코트 목록
   const { data: courts } = await supabase
     .from('courts')
     .select('id')
+    .eq('club_id', clubId)
     .eq('status', 'operating')
     .order('display_order');
 
   const courtIds = courts?.map((c) => c.id) ?? [];
 
-  // 각 그룹을 대기열에 추가
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     const courtPreferenceId = courtIds[i % courtIds.length] ?? null;
@@ -49,6 +41,7 @@ export async function createRoundRobin(selectedMemberIds: string[]) {
       .insert({
         court_preference_id: courtPreferenceId,
         status: 'waiting',
+        club_id: clubId,
       })
       .select()
       .single();
@@ -63,7 +56,6 @@ export async function createRoundRobin(selectedMemberIds: string[]) {
 
     await supabase.from('queue_members').insert(queueMembers);
 
-    // 4명 완성팀은 빈 코트에 자동 배정 시도
     if (group.length >= 4 && courtPreferenceId) {
       const { data: activeMatch } = await supabase
         .from('matches')
@@ -84,6 +76,7 @@ export async function createRoundRobin(selectedMemberIds: string[]) {
             court_id: courtPreferenceId,
             queue_entry_id: entry.id,
             status: 'pending',
+            club_id: clubId,
           })
           .select()
           .single();
@@ -99,7 +92,6 @@ export async function createRoundRobin(selectedMemberIds: string[]) {
       }
     }
   }
-
 
   return { data: { groupCount: groups.length, totalPlayers: selectedMemberIds.length } };
 }

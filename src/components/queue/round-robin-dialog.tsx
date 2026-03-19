@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
+import { useClubStore } from '@/store/club';
 import { createRoundRobin } from '@/lib/actions/round-robin';
 import type { Member } from '@/types';
 
@@ -19,25 +20,28 @@ interface RoundRobinDialogProps {
 }
 
 export function RoundRobinDialog({ open, onOpenChange }: RoundRobinDialogProps) {
+  const { activeClub } = useClubStore();
   const [members, setMembers] = useState<Member[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !activeClub) return;
     const supabase = createClient();
     supabase
-      .from('members')
-      .select('*')
-      .eq('is_online', true)
-      .order('name')
+      .from('club_members')
+      .select('member:members(*)')
+      .eq('club_id', activeClub.id)
+      .eq('status', 'approved')
       .then(({ data }) => {
-        if (data) {
-          setMembers(data as Member[]);
-          setSelected(new Set(data.map((m) => m.id)));
-        }
+        const onlineMembers = (data as unknown as { member: Member | null }[] ?? [])
+          .map((cm) => cm.member)
+          .filter((m): m is Member => m !== null && m.is_online)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setMembers(onlineMembers);
+        setSelected(new Set(onlineMembers.map((m) => m.id)));
       });
-  }, [open]);
+  }, [open, activeClub]);
 
   const toggleMember = (id: string) => {
     setSelected((prev) => {

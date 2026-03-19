@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/auth';
+import { useClubStore } from '@/store/club';
 import { useIsAdmin } from '@/lib/hooks/use-auth';
 import { deleteMatch } from '@/lib/actions/match';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ interface HistoryMatch extends Match {
 
 export default function HistoryPage() {
   const { member } = useAuthStore();
+  const { activeClub } = useClubStore();
   const isAdmin = useIsAdmin();
   const [matches, setMatches] = useState<readonly HistoryMatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,11 @@ export default function HistoryPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const loadMatches = useCallback(async (pageNum: number, onlyMine: boolean, reset: boolean) => {
+    if (!activeClub) {
+      if (reset) setMatches([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const supabase = createClient();
@@ -52,6 +59,7 @@ export default function HistoryPage() {
         .from('matches')
         .select('*')
         .eq('status', 'completed')
+        .eq('club_id', activeClub.id)
         .order('ended_at', { ascending: false })
         .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
@@ -79,7 +87,7 @@ export default function HistoryPage() {
         supabase.from('courts').select('*').in('id', courtIds),
       ]);
 
-      const memberIdsSet = new Set((players ?? []).map((p) => p.member_id));
+      const memberIdsSet = new Set((players ?? []).map((p) => p.member_id).filter((id): id is string => id !== null));
       const { data: members } = memberIdsSet.size > 0
         ? await supabase.from('members').select('*').in('id', [...memberIdsSet])
         : { data: [] as Member[] };
@@ -108,7 +116,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [member]);
+  }, [member, activeClub]);
 
   useEffect(() => {
     setPage(0);

@@ -6,27 +6,36 @@ import { useCourtStore } from '@/store/court';
 import { useQueueStore } from '@/store/queue';
 import { useMatchStore } from '@/store/match';
 import { useSettingsStore } from '@/store/settings';
+import { useClubStore } from '@/store/club';
 import type { Court, QueueEntry, QueueMember, Member, Match, MatchPlayer, Score } from '@/types';
 
 export function useRealtimeCourts() {
   const { setCourts, updateCourt } = useCourtStore();
+  const { activeClub } = useClubStore();
+  const clubId = activeClub?.id;
 
   useEffect(() => {
+    if (!clubId) {
+      setCourts([]);
+      return;
+    }
+
     const supabase = createClient();
 
     supabase
       .from('courts')
       .select('*')
+      .eq('club_id', clubId)
       .order('display_order')
       .then(({ data }) => {
         if (data) setCourts(data as readonly Court[]);
       });
 
     const channel = supabase
-      .channel('courts-realtime')
+      .channel(`courts-realtime-${clubId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'courts' },
+        { event: '*', schema: 'public', table: 'courts', filter: `club_id=eq.${clubId}` },
         (payload) => {
           if (payload.eventType === 'UPDATE') {
             updateCourt(payload.new.id, payload.new as Court);
@@ -34,6 +43,7 @@ export function useRealtimeCourts() {
             supabase
               .from('courts')
               .select('*')
+              .eq('club_id', clubId)
               .order('display_order')
               .then(({ data }) => {
                 if (data) setCourts(data as readonly Court[]);
@@ -46,20 +56,27 @@ export function useRealtimeCourts() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setCourts, updateCourt]);
+  }, [clubId, setCourts, updateCourt]);
 }
 
 export function useRealtimeQueue() {
   const { setEntries } = useQueueStore();
+  const { activeClub } = useClubStore();
+  const clubId = activeClub?.id;
 
   useEffect(() => {
+    if (!clubId) {
+      setEntries([]);
+      return;
+    }
+
     const supabase = createClient();
 
     const loadQueue = async () => {
-      // 개별 쿼리로 데이터 조회
       const { data: entries } = await supabase
         .from('queue_entries')
         .select('*')
+        .eq('club_id', clubId)
         .in('status', ['waiting', 'assigned'])
         .order('created_at');
 
@@ -77,7 +94,8 @@ export function useRealtimeQueue() {
           .in('queue_entry_id', entryIds),
         supabase
           .from('courts')
-          .select('*'),
+          .select('*')
+          .eq('club_id', clubId),
       ]);
 
       const memberIds = (queueMembers ?? []).map((qm) => qm.member_id);
@@ -107,10 +125,10 @@ export function useRealtimeQueue() {
     loadQueue();
 
     const channel = supabase
-      .channel('queue-realtime')
+      .channel(`queue-realtime-${clubId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'queue_entries' },
+        { event: '*', schema: 'public', table: 'queue_entries', filter: `club_id=eq.${clubId}` },
         () => loadQueue()
       )
       .on(
@@ -123,19 +141,27 @@ export function useRealtimeQueue() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setEntries]);
+  }, [clubId, setEntries]);
 }
 
 export function useRealtimeMatches() {
   const { setMatches } = useMatchStore();
+  const { activeClub } = useClubStore();
+  const clubId = activeClub?.id;
 
   useEffect(() => {
+    if (!clubId) {
+      setMatches([]);
+      return;
+    }
+
     const supabase = createClient();
 
     const loadMatches = async () => {
       const { data: matches } = await supabase
         .from('matches')
         .select('*')
+        .eq('club_id', clubId)
         .in('status', ['pending', 'playing'])
         .order('created_at');
 
@@ -162,7 +188,7 @@ export function useRealtimeMatches() {
           .in('id', courtIds),
       ]);
 
-      const memberIds = (players ?? []).map((p) => p.member_id);
+      const memberIds = (players ?? []).map((p) => p.member_id).filter(Boolean) as string[];
       const { data: members } = memberIds.length > 0
         ? await supabase.from('members').select('*').in('id', memberIds)
         : { data: [] as Member[] };
@@ -178,7 +204,7 @@ export function useRealtimeMatches() {
           .filter((p) => p.match_id === match.id)
           .map((p) => ({
             ...p,
-            member: membersMap.get(p.member_id),
+            member: p.member_id ? membersMap.get(p.member_id) : undefined,
           })) as readonly MatchPlayer[],
         score: scoresMap.get(match.id) ?? null,
       }));
@@ -189,10 +215,10 @@ export function useRealtimeMatches() {
     loadMatches();
 
     const channel = supabase
-      .channel('matches-realtime')
+      .channel(`matches-realtime-${clubId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'matches' },
+        { event: '*', schema: 'public', table: 'matches', filter: `club_id=eq.${clubId}` },
         () => loadMatches()
       )
       .on(
@@ -210,29 +236,33 @@ export function useRealtimeMatches() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setMatches]);
+  }, [clubId, setMatches]);
 }
 
 export function useRealtimeSettings() {
   const { setMatchWaitSeconds } = useSettingsStore();
+  const { activeClub } = useClubStore();
+  const clubId = activeClub?.id;
 
   useEffect(() => {
+    if (!clubId) return;
+
     const supabase = createClient();
 
     supabase
       .from('club_settings')
       .select('match_wait_seconds')
-      .limit(1)
+      .eq('club_id', clubId)
       .single()
       .then(({ data }) => {
         if (data) setMatchWaitSeconds(data.match_wait_seconds);
       });
 
     const channel = supabase
-      .channel('settings-realtime')
+      .channel(`settings-realtime-${clubId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'club_settings' },
+        { event: 'UPDATE', schema: 'public', table: 'club_settings', filter: `club_id=eq.${clubId}` },
         (payload) => {
           if (payload.new.match_wait_seconds != null) {
             setMatchWaitSeconds(payload.new.match_wait_seconds);
@@ -244,5 +274,5 @@ export function useRealtimeSettings() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setMatchWaitSeconds]);
+  }, [clubId, setMatchWaitSeconds]);
 }

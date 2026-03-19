@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { joinExistingQueue, cancelQueue, leaveQueue, addMembersToQueue } from '@/lib/actions/queue';
 import { createClient } from '@/lib/supabase/client';
+import { useClubStore } from '@/store/club';
 import { useBusyMemberIds } from '@/lib/hooks/use-busy-members';
 import { useState, useEffect } from 'react';
 import type { Member } from '@/types';
@@ -21,6 +22,7 @@ export function QueueList() {
   const { entries } = useQueueStore();
   const { member } = useAuthStore();
   const isAdmin = useIsAdmin();
+  const { activeClub } = useClubStore();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [addDialogEntryId, setAddDialogEntryId] = useState<string | null>(null);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -36,19 +38,26 @@ export function QueueList() {
     e.members?.some((m) => m.member_id === member?.id)
   );
 
-  // 인원추가 다이얼로그 열릴 때 회원 목록 로드
+  // 인원추가 다이얼로그 열릴 때 클럽 회원 목록 로드
   useEffect(() => {
-    if (!addDialogEntryId) return;
+    if (!addDialogEntryId || !activeClub) return;
     const supabase = createClient();
     supabase
-      .from('members')
-      .select('*')
-      .order('is_online', { ascending: false })
-      .order('name')
+      .from('club_members')
+      .select('member:members(*)')
+      .eq('club_id', activeClub.id)
+      .eq('status', 'approved')
       .then(({ data }) => {
-        if (data) setAllMembers(data as Member[]);
+        const members = (data as unknown as { member: Member | null }[] ?? [])
+          .map((cm) => cm.member)
+          .filter((m): m is Member => m !== null)
+          .sort((a, b) => {
+            if (a.is_online !== b.is_online) return a.is_online ? -1 : 1;
+            return a.name.localeCompare(b.name);
+          });
+        setAllMembers(members);
       });
-  }, [addDialogEntryId]);
+  }, [addDialogEntryId, activeClub]);
 
   const handleJoin = async (entryId: string) => {
     setLoadingId(entryId);

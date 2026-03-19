@@ -1,15 +1,18 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getMyClubId } from './club-context';
 import type { CourtStatus } from '@/types';
 
 export async function createCourt(name: string) {
   const supabase = await createClient();
+  const clubId = await getMyClubId();
+  if (!clubId) return { error: '클럽 정보를 찾을 수 없습니다.' };
 
-  // 현재 최대 display_order 가져오기
   const { data: courts } = await supabase
     .from('courts')
     .select('display_order')
+    .eq('club_id', clubId)
     .order('display_order', { ascending: false })
     .limit(1);
 
@@ -17,13 +20,11 @@ export async function createCourt(name: string) {
 
   const { data, error } = await supabase
     .from('courts')
-    .insert({ name, display_order: nextOrder })
+    .insert({ name, display_order: nextOrder, club_id: clubId })
     .select()
     .single();
 
   if (error) return { error: error.message };
-
-
   return { data };
 }
 
@@ -37,7 +38,6 @@ export async function updateCourtStatus(courtId: string, status: CourtStatus) {
 
   if (error) return { error: error.message };
 
-  // 운영중으로 변경되면 대기 중인 팀 자동 배정 시도
   if (status === 'operating') {
     await autoAssignToAvailableCourt(courtId);
   }
@@ -48,7 +48,16 @@ export async function updateCourtStatus(courtId: string, status: CourtStatus) {
 async function autoAssignToAvailableCourt(courtId: string) {
   const supabase = await createClient();
 
-  // 병렬: 활성 시합 확인 + 대기열 조회
+  // 코트의 club_id 조회
+  const { data: court } = await supabase
+    .from('courts')
+    .select('club_id')
+    .eq('id', courtId)
+    .single();
+
+  if (!court) return;
+  const clubId = court.club_id;
+
   const [activeResult, entriesResult] = await Promise.all([
     supabase
       .from('matches')
@@ -59,6 +68,7 @@ async function autoAssignToAvailableCourt(courtId: string) {
     supabase
       .from('queue_entries')
       .select('*, members:queue_members(member_id)')
+      .eq('club_id', clubId)
       .eq('status', 'waiting')
       .order('created_at'),
   ]);
@@ -68,7 +78,6 @@ async function autoAssignToAvailableCourt(courtId: string) {
   const fullEntry = entriesResult.data?.find((e) => (e.members?.length ?? 0) >= 4);
   if (!fullEntry) return;
 
-  // 병렬: 배정 + 시합 생성
   const [, matchResult] = await Promise.all([
     supabase
       .from('queue_entries')
@@ -80,6 +89,7 @@ async function autoAssignToAvailableCourt(courtId: string) {
         court_id: courtId,
         queue_entry_id: fullEntry.id,
         status: 'pending',
+        club_id: clubId,
       })
       .select()
       .single(),
@@ -105,15 +115,12 @@ export async function updateCourtName(courtId: string, name: string) {
     .eq('id', courtId);
 
   if (error) return { error: error.message };
-
-
   return { data: true };
 }
 
 export async function deleteCourt(courtId: string) {
   const supabase = await createClient();
 
-  // 진행 중인 시합이 있는지 확인
   const { data: activeMatches } = await supabase
     .from('matches')
     .select('id')
@@ -131,8 +138,6 @@ export async function deleteCourt(courtId: string) {
     .eq('id', courtId);
 
   if (error) return { error: error.message };
-
-
   return { data: true };
 }
 
@@ -147,7 +152,5 @@ export async function reorderCourts(courtIds: string[]) {
   );
 
   await Promise.all(updates);
-
-
   return { data: true };
 }

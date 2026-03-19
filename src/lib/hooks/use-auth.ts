@@ -3,10 +3,12 @@
 import { useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/auth';
-import type { Member } from '@/types';
+import { useClubStore } from '@/store/club';
+import type { Member, Club, ClubMember } from '@/types';
 
 export function useAuth() {
   const { member, isLoading, setMember, setLoading } = useAuthStore();
+  const { setActiveClub, setClubMembership } = useClubStore();
 
   const setOnlineStatus = useCallback(async (memberId: string, online: boolean) => {
     const supabase = createClient();
@@ -23,6 +25,8 @@ export function useAuth() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         setMember(null);
+        setActiveClub(null);
+        setClubMembership(null);
         setLoading(false);
         return;
       }
@@ -40,7 +44,28 @@ export function useAuth() {
           .single(),
       ]);
 
-      setMember(data as Member | null);
+      const memberData = data as Member | null;
+      setMember(memberData);
+
+      // 클럽 멤버십 로드
+      if (memberData) {
+        const { data: membership } = await supabase
+          .from('club_members')
+          .select('*, club:clubs(*)')
+          .eq('member_id', memberData.id)
+          .eq('status', 'approved')
+          .limit(1)
+          .single();
+
+        if (membership) {
+          setClubMembership(membership as ClubMember);
+          setActiveClub(membership.club as Club);
+        } else {
+          setClubMembership(null);
+          setActiveClub(null);
+        }
+      }
+
       setLoading(false);
     };
 
@@ -48,24 +73,23 @@ export function useAuth() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
-        // 로그아웃 시 오프라인 (member가 아직 있을 때 처리)
         if (member?.id) {
           setOnlineStatus(member.id, false);
         }
+        setActiveClub(null);
+        setClubMembership(null);
       }
       loadMember();
     });
 
     return () => subscription.unsubscribe();
-  }, [setMember, setLoading, member?.id, setOnlineStatus]);
+  }, [setMember, setLoading, setActiveClub, setClubMembership, member?.id, setOnlineStatus]);
 
   // 브라우저 닫기/탭 닫기 시 오프라인 처리
   useEffect(() => {
     if (!member?.id) return;
 
     const handleBeforeUnload = () => {
-      const supabase = createClient();
-      // sendBeacon으로 비동기 요청 (페이지 닫혀도 전송)
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/members?id=eq.${member.id}`;
       const headers = {
         'Content-Type': 'application/json',
@@ -73,8 +97,6 @@ export function useAuth() {
         'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
         'Prefer': 'return=minimal',
       };
-      // navigator.sendBeacon은 POST만 지원, Supabase REST는 PATCH 필요
-      // 대신 동기 fetch로 처리 (keepalive)
       fetch(url, {
         method: 'PATCH',
         headers,
@@ -83,7 +105,6 @@ export function useAuth() {
       }).catch(() => {});
     };
 
-    // 주기적 heartbeat로 온라인 상태 갱신 (30초마다)
     const heartbeat = setInterval(() => {
       setOnlineStatus(member.id, true);
     }, 30000);
@@ -99,6 +120,9 @@ export function useAuth() {
 }
 
 export function useIsAdmin() {
+  const { clubMembership } = useClubStore();
   const { member } = useAuthStore();
-  return member?.role === 'admin' || member?.role === 'sub_admin';
+  return member?.is_super_admin ||
+    clubMembership?.role === 'master' ||
+    clubMembership?.role === 'admin';
 }

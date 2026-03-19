@@ -16,6 +16,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/auth';
 import { useCourtStore } from '@/store/court';
+import { useClubStore } from '@/store/club';
 import { joinQueue } from '@/lib/actions/queue';
 import { useBusyMemberIds } from '@/lib/hooks/use-busy-members';
 import type { Member } from '@/types';
@@ -28,6 +29,7 @@ interface JoinQueueDialogProps {
 export function JoinQueueDialog({ open, onOpenChange }: JoinQueueDialogProps) {
   const { member } = useAuthStore();
   const { courts } = useCourtStore();
+  const { activeClub } = useClubStore();
   const [allMembers, setAllMembers] = useState<readonly Member[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [courtPreference, setCourtPreference] = useState<string>('none');
@@ -38,20 +40,27 @@ export function JoinQueueDialog({ open, onOpenChange }: JoinQueueDialogProps) {
   const maxSelect = isMeBusy ? 4 : 3;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !activeClub) return;
     setSelectedMembers([]);
     setCourtPreference('none');
     const supabase = createClient();
+    // 클럽 멤버만 조회
     supabase
-      .from('members')
-      .select('*')
-      .neq('id', member?.id ?? '')
-      .order('is_online', { ascending: false })
-      .order('name')
+      .from('club_members')
+      .select('member:members(*)')
+      .eq('club_id', activeClub.id)
+      .eq('status', 'approved')
       .then(({ data }) => {
-        if (data) setAllMembers(data as readonly Member[]);
+        const members = (data as unknown as { member: Member | null }[] ?? [])
+          .map((cm) => cm.member)
+          .filter((m): m is Member => m !== null && m.id !== member?.id)
+          .sort((a, b) => {
+            if (a.is_online !== b.is_online) return a.is_online ? -1 : 1;
+            return a.name.localeCompare(b.name);
+          });
+        setAllMembers(members);
       });
-  }, [open, member?.id]);
+  }, [open, member?.id, activeClub]);
 
   const availableMembers = allMembers.filter((m) => !busyIds.has(m.id));
 

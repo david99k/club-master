@@ -7,12 +7,15 @@ export type CourtStatus = 'operating' | 'repairing' | 'waiting' | 'lesson';
 export type QueueEntryStatus = 'waiting' | 'assigned' | 'playing' | 'completed' | 'cancelled';
 export type MatchStatus = 'pending' | 'playing' | 'completed';
 export type Team = 'A' | 'B';
+export type ClubMemberRole = 'master' | 'admin' | 'member';
+export type ClubMemberStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Member {
   readonly id: string;
   readonly name: string;
   readonly phone: string;
   readonly role: MemberRole;
+  readonly is_super_admin: boolean;
   readonly is_online: boolean;
   readonly last_location_lat: number | null;
   readonly last_location_lng: number | null;
@@ -20,8 +23,45 @@ export interface Member {
   readonly updated_at: string;
 }
 
+export interface Club {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly logo_url: string | null;
+  readonly is_active: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly locations?: readonly ClubLocation[];
+  readonly member_count?: number;
+}
+
+export interface ClubLocation {
+  readonly id: string;
+  readonly club_id: string;
+  readonly name: string;
+  readonly address: string | null;
+  readonly lat: number;
+  readonly lng: number;
+  readonly is_primary: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface ClubMember {
+  readonly id: string;
+  readonly club_id: string;
+  readonly member_id: string;
+  readonly role: ClubMemberRole;
+  readonly status: ClubMemberStatus;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly member?: Member;
+  readonly club?: Club;
+}
+
 export interface Court {
   readonly id: string;
+  readonly club_id: string;
   readonly name: string;
   readonly status: CourtStatus;
   readonly display_order: number;
@@ -31,6 +71,7 @@ export interface Court {
 
 export interface QueueEntry {
   readonly id: string;
+  readonly club_id: string;
   readonly court_preference_id: string | null;
   readonly status: QueueEntryStatus;
   readonly created_at: string;
@@ -50,6 +91,7 @@ export interface QueueMember {
 
 export interface Match {
   readonly id: string;
+  readonly club_id: string;
   readonly court_id: string;
   readonly queue_entry_id: string | null;
   readonly status: MatchStatus;
@@ -89,6 +131,7 @@ export interface MemberStats {
 
 export interface ClubSettings {
   readonly id: string;
+  readonly club_id: string;
   readonly match_wait_seconds: number;
   readonly created_at: string;
   readonly updated_at: string;

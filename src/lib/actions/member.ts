@@ -1,9 +1,11 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getMyClubId } from './club-context';
 
 export async function addMember(name: string, phone?: string) {
   const supabase = await createClient();
+  const clubId = await getMyClubId();
 
   const { data, error } = await supabase
     .from('members')
@@ -16,13 +18,23 @@ export async function addMember(name: string, phone?: string) {
     .single();
 
   if (error) return { error: error.message };
+
+  // 클럽에 회원 추가
+  if (data && clubId) {
+    await supabase.from('club_members').insert({
+      club_id: clubId,
+      member_id: data.id,
+      role: 'member',
+      status: 'approved',
+    });
+  }
+
   return { data };
 }
 
 export async function deleteMember(memberId: string) {
   const supabase = await createClient();
 
-  // 진행 중인 시합에 참여 중인지 확인 + 회원 이름 조회 (병렬)
   const [{ data: activePlayers }, { data: memberData }] = await Promise.all([
     supabase
       .from('match_players')
@@ -41,7 +53,7 @@ export async function deleteMember(memberId: string) {
     return { error: '진행 중인 시합에 참여 중인 회원은 삭제할 수 없습니다.' };
   }
 
-  // 삭제 전: 경기 기록에 이름 보존 (player_name이 비어있는 경우만)
+  // 삭제 전: 경기 기록에 이름 보존
   if (memberData?.name) {
     await supabase
       .from('match_players')
@@ -50,7 +62,7 @@ export async function deleteMember(memberId: string) {
       .is('player_name', null);
   }
 
-  // 대기열에서 제거 후 회원 삭제 (member_id는 ON DELETE SET NULL로 match_players에서 null 처리됨)
+  // 대기열에서 제거 후 회원 삭제
   await supabase
     .from('queue_members')
     .delete()

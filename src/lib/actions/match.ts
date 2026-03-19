@@ -19,23 +19,18 @@ export async function cycleTeams(matchId: string) {
     return { error: '4명의 플레이어가 필요합니다.' };
   }
 
-  // member_id 기준 정렬하여 안정적인 인덱싱
-  const sorted = [...players].sort((a, b) => a.member_id.localeCompare(b.member_id));
+  const sorted = [...players].sort((a, b) => (a.member_id ?? '').localeCompare(b.member_id ?? ''));
 
-  // 현재 조합 판별: sorted[0]은 항상 A팀이라고 가정하고, A팀 파트너가 누구인지로 판별
   const teamAIds = new Set(players.filter((p) => p.team === 'A').map((p) => p.member_id));
 
-  // sorted[0]의 파트너(같은 팀) 찾기
   const partnerIndex = sorted.findIndex(
     (p, i) => i > 0 && teamAIds.has(p.member_id) === teamAIds.has(sorted[0].member_id)
   );
 
-  // 조합: partner가 sorted[1]이면 0, sorted[2]이면 1, sorted[3]이면 2
   const comboMap: Record<number, number> = { 1: 0, 2: 1, 3: 2 };
   const currentCombo = comboMap[partnerIndex] ?? 0;
   const nextCombo = (currentCombo + 1) % 3;
 
-  // 다음 조합의 팀 배분
   const combos = [
     { A: [0, 1], B: [2, 3] },
     { A: [0, 2], B: [1, 3] },
@@ -43,7 +38,6 @@ export async function cycleTeams(matchId: string) {
   ];
   const next = combos[nextCombo];
 
-  // 병렬 업데이트
   await Promise.all([
     ...next.A.map((i) =>
       supabase.from('match_players').update({ team: 'A' }).eq('id', sorted[i].id)
@@ -59,7 +53,6 @@ export async function cycleTeams(matchId: string) {
 export async function startMatch(matchId: string) {
   const supabase = await createClient();
 
-  // 병렬: 시합 시작 + queue_entry_id 조회
   const [updateResult, matchResult] = await Promise.all([
     supabase
       .from('matches')
@@ -94,7 +87,7 @@ export async function completeMatch(
 ) {
   const supabase = await createClient();
 
-  // 경기 완료 시 player_name 보존 (아직 저장 안 된 경우)
+  // 경기 완료 시 player_name 보존
   const { data: playersToSave } = await supabase
     .from('match_players')
     .select('id, member_id')
@@ -122,7 +115,7 @@ export async function completeMatch(
     }
   }
 
-  // 병렬: 시합 완료 + queue_entry_id 조회
+  // 병렬: 시합 완료 + queue_entry_id + club_id 조회
   const [updateResult, matchResult] = await Promise.all([
     supabase
       .from('matches')
@@ -133,14 +126,13 @@ export async function completeMatch(
       .eq('id', matchId),
     supabase
       .from('matches')
-      .select('queue_entry_id')
+      .select('queue_entry_id, club_id')
       .eq('id', matchId)
       .single(),
   ]);
 
   if (updateResult.error) return { error: updateResult.error.message };
 
-  // 병렬: 대기열 완료 + 스코어 입력
   if (matchResult.data?.queue_entry_id) {
     if (teamAScore !== undefined && teamBScore !== undefined) {
       await Promise.all([
@@ -169,7 +161,9 @@ export async function completeMatch(
   }
 
   // 대기 중인 팀을 빈 코트에 자동 배정
-  await autoAssignWaitingTeams();
+  if (matchResult.data?.club_id) {
+    await autoAssignWaitingTeams(matchResult.data.club_id);
+  }
 
   return { data: true };
 }
@@ -177,21 +171,39 @@ export async function completeMatch(
 export async function deleteMatch(matchId: string) {
   const supabase = await createClient();
 
-  // 관리자 권한 확인
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: '로그인이 필요합니다.' };
 
   const { data: currentMember } = await supabase
     .from('members')
-    .select('role')
+    .select('id, is_super_admin')
     .eq('auth_id', session.user.id)
     .single();
 
-  if (!currentMember || !['admin', 'sub_admin'].includes(currentMember.role)) {
-    return { error: '경기 기록 삭제 권한이 없습니다.' };
+  if (!currentMember) return { error: '회원 정보를 찾을 수 없습니다.' };
+
+  // 슈퍼 어드민이 아니면 클럽 역할 확인
+  if (!currentMember.is_super_admin) {
+    const { data: match } = await supabase
+      .from('matches')
+      .select('club_id')
+      .eq('id', matchId)
+      .single();
+
+    if (!match) return { error: '경기를 찾을 수 없습니다.' };
+
+    const { data: membership } = await supabase
+      .from('club_members')
+      .select('role')
+      .eq('club_id', match.club_id)
+      .eq('member_id', currentMember.id)
+      .single();
+
+    if (!membership || !['master', 'admin'].includes(membership.role)) {
+      return { error: '경기 기록 삭제 권한이 없습니다.' };
+    }
   }
 
-  // 완료된 경기만 삭제 가능
   const { data: match } = await supabase
     .from('matches')
     .select('status')
@@ -203,7 +215,6 @@ export async function deleteMatch(matchId: string) {
     return { error: '완료된 경기만 삭제할 수 있습니다.' };
   }
 
-  // 병렬: scores + match_players 삭제 후 match 삭제
   await Promise.all([
     supabase.from('scores').delete().eq('match_id', matchId),
     supabase.from('match_players').delete().eq('match_id', matchId),
@@ -215,24 +226,26 @@ export async function deleteMatch(matchId: string) {
   return { data: true };
 }
 
-async function autoAssignWaitingTeams() {
+async function autoAssignWaitingTeams(clubId: string) {
   const supabase = await createClient();
 
-  // 병렬: 대기열 + 운영 코트 + 활성 시합
   const [entriesResult, courtsResult, activeResult] = await Promise.all([
     supabase
       .from('queue_entries')
       .select('*, members:queue_members(member_id)')
+      .eq('club_id', clubId)
       .eq('status', 'waiting')
       .order('created_at'),
     supabase
       .from('courts')
       .select('id')
+      .eq('club_id', clubId)
       .eq('status', 'operating')
       .order('display_order'),
     supabase
       .from('matches')
       .select('court_id')
+      .eq('club_id', clubId)
       .in('status', ['pending', 'playing']),
   ]);
 
@@ -244,13 +257,11 @@ async function autoAssignWaitingTeams() {
     (activeResult.data ?? []).map((m) => m.court_id)
   );
 
-  // 4인 완성팀만, 생성 순서대로
   const fullEntries = waitingEntries.filter((e) => (e.members?.length ?? 0) >= 4);
 
   for (const entry of fullEntries) {
     let courtId: string | null = null;
 
-    // 선호 코트 우선
     if (entry.court_preference_id && !busyCourtIds.has(entry.court_preference_id)) {
       if (courts.some((c) => c.id === entry.court_preference_id)) {
         courtId = entry.court_preference_id;
@@ -262,9 +273,8 @@ async function autoAssignWaitingTeams() {
       if (available) courtId = available.id;
     }
 
-    if (!courtId) break; // 빈 코트 없음
+    if (!courtId) break;
 
-    // 배정된 코트를 busyCourtIds에 추가 (다음 루프에서 중복 방지)
     busyCourtIds.add(courtId);
 
     const [, matchResult] = await Promise.all([
@@ -278,6 +288,7 @@ async function autoAssignWaitingTeams() {
           court_id: courtId,
           queue_entry_id: entry.id,
           status: 'pending',
+          club_id: clubId,
         })
         .select()
         .single(),
