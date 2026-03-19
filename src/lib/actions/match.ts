@@ -94,6 +94,34 @@ export async function completeMatch(
 ) {
   const supabase = await createClient();
 
+  // 경기 완료 시 player_name 보존 (아직 저장 안 된 경우)
+  const { data: playersToSave } = await supabase
+    .from('match_players')
+    .select('id, member_id')
+    .eq('match_id', matchId)
+    .is('player_name', null);
+
+  if (playersToSave && playersToSave.length > 0) {
+    const memberIds = playersToSave.map((p) => p.member_id).filter(Boolean) as string[];
+    if (memberIds.length > 0) {
+      const { data: memberNames } = await supabase
+        .from('members')
+        .select('id, name')
+        .in('id', memberIds);
+      const nameMap = new Map((memberNames ?? []).map((m) => [m.id, m.name]));
+      await Promise.all(
+        playersToSave
+          .filter((p) => p.member_id && nameMap.has(p.member_id))
+          .map((p) =>
+            supabase
+              .from('match_players')
+              .update({ player_name: nameMap.get(p.member_id!)! })
+              .eq('id', p.id)
+          )
+      );
+    }
+  }
+
   // 병렬: 시합 완료 + queue_entry_id 조회
   const [updateResult, matchResult] = await Promise.all([
     supabase
@@ -142,6 +170,47 @@ export async function completeMatch(
 
   // 대기 중인 팀을 빈 코트에 자동 배정
   await autoAssignWaitingTeams();
+
+  return { data: true };
+}
+
+export async function deleteMatch(matchId: string) {
+  const supabase = await createClient();
+
+  // 관리자 권한 확인
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: '로그인이 필요합니다.' };
+
+  const { data: currentMember } = await supabase
+    .from('members')
+    .select('role')
+    .eq('auth_id', session.user.id)
+    .single();
+
+  if (!currentMember || !['admin', 'sub_admin'].includes(currentMember.role)) {
+    return { error: '경기 기록 삭제 권한이 없습니다.' };
+  }
+
+  // 완료된 경기만 삭제 가능
+  const { data: match } = await supabase
+    .from('matches')
+    .select('status')
+    .eq('id', matchId)
+    .single();
+
+  if (!match) return { error: '경기를 찾을 수 없습니다.' };
+  if (match.status !== 'completed') {
+    return { error: '완료된 경기만 삭제할 수 있습니다.' };
+  }
+
+  // 병렬: scores + match_players 삭제 후 match 삭제
+  await Promise.all([
+    supabase.from('scores').delete().eq('match_id', matchId),
+    supabase.from('match_players').delete().eq('match_id', matchId),
+  ]);
+
+  const { error } = await supabase.from('matches').delete().eq('id', matchId);
+  if (error) return { error: error.message };
 
   return { data: true };
 }

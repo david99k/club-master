@@ -23,7 +23,7 @@ export function useBusyMemberIds(): Set<string> {
     for (const match of matches) {
       if (match.status === 'pending' || match.status === 'playing') {
         for (const p of match.players ?? []) {
-          ids.add(p.member_id);
+          if (p.member_id) ids.add(p.member_id);
         }
       }
     }

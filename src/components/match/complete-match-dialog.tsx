@@ -12,18 +12,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { completeMatch } from '@/lib/actions/match';
+import type { MatchPlayer } from '@/types';
 
 interface CompleteMatchDialogProps {
   readonly matchId: string;
+  readonly players?: readonly MatchPlayer[];
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }
 
 export function CompleteMatchDialog({
   matchId,
+  players,
   open,
   onOpenChange,
 }: CompleteMatchDialogProps) {
+  const teamANames = players?.filter((p) => p.team === 'A').map((p) => p.member?.name ?? '?').join(', ') ?? '';
+  const teamBNames = players?.filter((p) => p.team === 'B').map((p) => p.member?.name ?? '?').join(', ') ?? '';
   const [teamAScore, setTeamAScore] = useState('');
   const [teamBScore, setTeamBScore] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,6 +61,9 @@ export function CompleteMatchDialog({
         <div className="grid grid-cols-2 gap-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="teamA">A팀 점수</Label>
+            {teamANames && (
+              <p className="text-xs text-muted-foreground">{teamANames}</p>
+            )}
             <Input
               id="teamA"
               type="number"
@@ -67,6 +75,9 @@ export function CompleteMatchDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="teamB">B팀 점수</Label>
+            {teamBNames && (
+              <p className="text-xs text-muted-foreground">{teamBNames}</p>
+            )}
             <Input
               id="teamB"
               type="number"

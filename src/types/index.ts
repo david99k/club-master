@@ -64,7 +64,8 @@ export interface Match {
 export interface MatchPlayer {
   readonly id: string;
   readonly match_id: string;
-  readonly member_id: string;
+  readonly member_id: string | null;
+  readonly player_name: string | null;
   readonly team: Team;
   readonly member?: Member;
 }

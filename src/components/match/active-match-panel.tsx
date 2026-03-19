@@ -143,6 +143,7 @@ export function ActiveMatchPanel() {
       {completingMatchId && (
         <CompleteMatchDialog
           matchId={completingMatchId}
+          players={myMatch.players}
           open={!!completingMatchId}
           onOpenChange={(open) => {
             if (!open) setCompletingMatchId(null);

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/auth';
+import { useIsAdmin } from '@/lib/hooks/use-auth';
+import { deleteMatch } from '@/lib/actions/match';
 import { Button } from '@/components/ui/button';
 import type { Match, MatchPlayer, Member, Score, Court } from '@/types';
 
@@ -16,11 +18,13 @@ interface HistoryMatch extends Match {
 
 export default function HistoryPage() {
   const { member } = useAuthStore();
+  const isAdmin = useIsAdmin();
   const [matches, setMatches] = useState<readonly HistoryMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [myOnly, setMyOnly] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const loadMatches = useCallback(async (pageNum: number, onlyMine: boolean, reset: boolean) => {
     setLoading(true);
@@ -118,6 +122,18 @@ export default function HistoryPage() {
     loadMatches(nextPage, myOnly, false);
   };
 
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!confirm('이 경기 기록을 삭제하시겠습니까?')) return;
+    setDeleting(matchId);
+    const result = await deleteMatch(matchId);
+    if (result.error) {
+      alert(result.error);
+    } else {
+      setMatches((prev) => prev.filter((m) => m.id !== matchId));
+    }
+    setDeleting(null);
+  };
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
@@ -204,9 +220,21 @@ export default function HistoryPage() {
                       {match.court?.name ?? '코트'}
                     </span>
                   </div>
-                  <span className="text-[10px] sm:text-xs text-gray-400">
-                    {formatDuration(match.started_at, match.ended_at)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] sm:text-xs text-gray-400">
+                      {formatDuration(match.started_at, match.ended_at)}
+                    </span>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMatch(match.id)}
+                        disabled={deleting === match.id}
+                        className="text-[10px] sm:text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                      >
+                        {deleting === match.id ? '삭제 중...' : '삭제'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* 팀 vs 팀 */}
@@ -220,19 +248,25 @@ export default function HistoryPage() {
                       {aWin && <span className="text-[10px] text-indigo-500 font-bold">WIN</span>}
                     </div>
                     <div className="space-y-0.5">
-                      {teamA.map((p) => (
-                        <div key={p.id} className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-[10px] sm:text-xs">
-                            {p.member?.name?.charAt(0) ?? '?'}
+                      {teamA.map((p) => {
+                        const name = p.member?.name ?? p.player_name ?? '(탈퇴)';
+                        return (
+                          <div key={p.id} className="flex items-center gap-1.5">
+                            <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] sm:text-xs ${
+                              p.member ? 'bg-indigo-500' : 'bg-gray-400'
+                            }`}>
+                              {name.charAt(0)}
+                            </div>
+                            <span className={`text-xs sm:text-sm ${
+                              p.member_id === member?.id ? 'font-bold text-indigo-700' :
+                              !p.member ? 'text-gray-400' : 'text-gray-700'
+                            }`}>
+                              {name}
+                              {p.member_id === member?.id && <span className="text-indigo-400 ml-0.5">(나)</span>}
+                            </span>
                           </div>
-                          <span className={`text-xs sm:text-sm ${
-                            p.member_id === member?.id ? 'font-bold text-indigo-700' : 'text-gray-700'
-                          }`}>
-                            {p.member?.name ?? '?'}
-                            {p.member_id === member?.id && <span className="text-indigo-400 ml-0.5">(나)</span>}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -262,19 +296,25 @@ export default function HistoryPage() {
                       {bWin && <span className="text-[10px] text-gray-600 font-bold">WIN</span>}
                     </div>
                     <div className="space-y-0.5">
-                      {teamB.map((p) => (
-                        <div key={p.id} className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-[10px] sm:text-xs">
-                            {p.member?.name?.charAt(0) ?? '?'}
+                      {teamB.map((p) => {
+                        const name = p.member?.name ?? p.player_name ?? '(탈퇴)';
+                        return (
+                          <div key={p.id} className="flex items-center gap-1.5">
+                            <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] sm:text-xs ${
+                              p.member ? 'bg-gray-700' : 'bg-gray-400'
+                            }`}>
+                              {name.charAt(0)}
+                            </div>
+                            <span className={`text-xs sm:text-sm ${
+                              p.member_id === member?.id ? 'font-bold text-gray-900' :
+                              !p.member ? 'text-gray-400' : 'text-gray-700'
+                            }`}>
+                              {name}
+                              {p.member_id === member?.id && <span className="text-indigo-400 ml-0.5">(나)</span>}
+                            </span>
                           </div>
-                          <span className={`text-xs sm:text-sm ${
-                            p.member_id === member?.id ? 'font-bold text-gray-900' : 'text-gray-700'
-                          }`}>
-                            {p.member?.name ?? '?'}
-                            {p.member_id === member?.id && <span className="text-indigo-400 ml-0.5">(나)</span>}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

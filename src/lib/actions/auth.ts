@@ -106,8 +106,26 @@ export async function signIn(name: string, phone: string) {
     password: digits,
   });
 
-  if (error) return { error: '로그인에 실패했습니다.' };
-  return { data };
+  if (!error) return { data };
+
+  // 로그인 실패 → 이전 인증 시스템의 계정일 수 있음 (이메일 형식 불일치)
+  // 새 Auth 계정 생성 후 auth_id 갱신
+  const { data: newSignUpData, error: newSignUpError } = await supabase.auth.signUp({
+    email,
+    password: digits,
+    options: { data: { name: name.trim() } },
+  });
+
+  if (newSignUpError) return { error: '로그인에 실패했습니다. 관리자에게 문의하세요.' };
+
+  if (newSignUpData.user) {
+    await supabase
+      .from('members')
+      .update({ auth_id: newSignUpData.user.id })
+      .eq('id', member.id);
+  }
+
+  return { data: newSignUpData };
 }
 
 export async function signOut() {
