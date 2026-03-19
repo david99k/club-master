@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useClubStore } from '@/store/club';
 import { updateClub, addClubLocation, updateClubLocation, deleteClubLocation } from '@/lib/actions/club';
+import { useGeocode } from '@/lib/hooks/use-geocode';
+import useKakaoLoader from '@/lib/hooks/use-kakao-loader';
 import type { ClubLocation } from '@/types';
 
 export default function AdminClubPage() {
@@ -63,7 +65,11 @@ export default function AdminClubPage() {
   const handleAddLocation = async () => {
     if (!newLocName.trim() || !newLocAddress.trim()) return;
     setAddingLoc(true);
-    const result = await addClubLocation(newLocName.trim(), newLocAddress.trim(), 0, 0);
+    // 주소 → 좌표 변환
+    const coords = await geocode(newLocAddress.trim());
+    const lat = coords?.lat ?? 0;
+    const lng = coords?.lng ?? 0;
+    const result = await addClubLocation(newLocName.trim(), newLocAddress.trim(), lat, lng);
     if (result.error) {
       alert(result.error);
     } else {
@@ -76,7 +82,10 @@ export default function AdminClubPage() {
 
   const handleUpdateLocation = async (locId: string) => {
     if (!editLocName.trim() || !editLocAddress.trim()) return;
-    const result = await updateClubLocation(locId, editLocName.trim(), editLocAddress.trim(), 0, 0);
+    const coords = await geocode(editLocAddress.trim());
+    const lat = coords?.lat ?? 0;
+    const lng = coords?.lng ?? 0;
+    const result = await updateClubLocation(locId, editLocName.trim(), editLocAddress.trim(), lat, lng);
     if (result.error) {
       alert(result.error);
     } else {
@@ -100,6 +109,9 @@ export default function AdminClubPage() {
     setEditLocName(loc.name);
     setEditLocAddress(loc.address ?? '');
   };
+
+  useKakaoLoader();
+  const { geocode } = useGeocode();
 
   if (!activeClub) {
     return <p className="text-center text-gray-500 py-12">클럽 정보를 불러오는 중...</p>;

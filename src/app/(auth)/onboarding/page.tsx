@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { createClub, searchClubs, requestJoinClub, skipClubSelection } from '@/lib/actions/club';
+import { useGeocode } from '@/lib/hooks/use-geocode';
+import useKakaoLoader from '@/lib/hooks/use-kakao-loader';
 import { useRouter } from 'next/navigation';
 import type { Club } from '@/types';
 
@@ -27,6 +29,9 @@ export default function OnboardingPage() {
   const [searching, setSearching] = useState(false);
   const [requestedClubs, setRequestedClubs] = useState<Set<string>>(new Set());
 
+  useKakaoLoader();
+  const { geocode } = useGeocode();
+
   const handleCreateClub = async () => {
     if (!clubName.trim()) { setError('클럽명을 입력해주세요.'); return; }
     if (!locationName.trim()) { setError('활동 장소명을 입력해주세요.'); return; }
@@ -35,8 +40,12 @@ export default function OnboardingPage() {
     setLoading(true);
     setError('');
     try {
+      // 주소 → 좌표 변환
+      const coords = await geocode(locationAddress.trim());
+      const lat = coords?.lat ?? 0;
+      const lng = coords?.lng ?? 0;
       const result = await createClub(clubName.trim(), clubDesc.trim() || null, [
-        { name: locationName.trim(), address: locationAddress.trim(), lat: 0, lng: 0 },
+        { name: locationName.trim(), address: locationAddress.trim(), lat, lng },
       ]);
       if (result.error) {
         setError(result.error);
