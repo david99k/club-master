@@ -8,7 +8,7 @@ import type { Member, Club, ClubMember } from '@/types';
 
 export function useAuth() {
   const { member, isLoading, setMember, setLoading } = useAuthStore();
-  const { setActiveClub, setClubMembership } = useClubStore();
+  const { setActiveClub, setClubMembership, setMyClubs } = useClubStore();
 
   const setOnlineStatus = useCallback(async (memberId: string, online: boolean) => {
     const supabase = createClient();
@@ -47,23 +47,24 @@ export function useAuth() {
       const memberData = data as Member | null;
       setMember(memberData);
 
-      // 클럽 멤버십 로드
+      // 클럽 멤버십 로드 (내가 속한 모든 클럽)
       if (memberData) {
-        const { data: membership } = await supabase
+        const { data: memberships } = await supabase
           .from('club_members')
           .select('*, club:clubs(*)')
           .eq('member_id', memberData.id)
           .eq('status', 'approved')
-          .limit(1)
-          .single();
+          .order('created_at', { ascending: true });
 
-        if (membership) {
-          setClubMembership(membership as ClubMember);
-          setActiveClub(membership.club as Club);
-        } else {
+        const myClubs = (memberships ?? []) as ClubMember[];
+        setMyClubs(myClubs);
+
+        // 클럽이 없으면 선택 해제
+        if (myClubs.length === 0) {
           setClubMembership(null);
           setActiveClub(null);
         }
+        // 클럽이 있으면 선택 화면으로 (activeClub 설정하지 않음)
       }
 
       setLoading(false);
@@ -78,12 +79,13 @@ export function useAuth() {
         }
         setActiveClub(null);
         setClubMembership(null);
+        setMyClubs([]);
       }
       loadMember();
     });
 
     return () => subscription.unsubscribe();
-  }, [setMember, setLoading, setActiveClub, setClubMembership, member?.id, setOnlineStatus]);
+  }, [setMember, setLoading, setActiveClub, setClubMembership, setMyClubs, member?.id, setOnlineStatus]);
 
   // 브라우저 닫기/탭 닫기 시 오프라인 처리
   useEffect(() => {

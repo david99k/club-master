@@ -9,7 +9,7 @@ import Link from 'next/link';
 
 export function Header() {
   const { member } = useAuthStore();
-  const { activeClub } = useClubStore();
+  const { activeClub, myClubs, clearSelection } = useClubStore();
   const isAdmin = useIsAdmin();
 
   return (
