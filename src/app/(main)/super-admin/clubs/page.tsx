@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import type { Club } from '@/types';
 
 interface ClubWithStats extends Club {
@@ -74,14 +74,7 @@ export default function SuperAdminClubsPage() {
             <div key={club.id} className="rounded-xl border border-gray-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold">{club.name}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      club.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {club.is_active ? '활성' : '비활성'}
-                    </span>
-                  </div>
+                  <p className="font-bold">{club.name}</p>
                   {club.description && (
                     <p className="text-sm text-gray-500 mt-0.5">{club.description}</p>
                   )}
@@ -93,18 +86,13 @@ export default function SuperAdminClubsPage() {
                     <span>{new Date(club.created_at).toLocaleDateString('ko-KR')}</span>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`rounded-full text-xs ${
-                    club.is_active
-                      ? 'border-red-300 text-red-500 hover:bg-red-50'
-                      : 'border-green-300 text-green-500 hover:bg-green-50'
-                  }`}
-                  onClick={() => toggleClubActive(club.id, club.is_active)}
-                >
-                  {club.is_active ? '비활성화' : '활성화'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">{club.is_active ? '활성' : '비활성'}</span>
+                  <Switch
+                    checked={club.is_active}
+                    onCheckedChange={() => toggleClubActive(club.id, club.is_active)}
+                  />
+                </div>
               </div>
             </div>
           ))}
